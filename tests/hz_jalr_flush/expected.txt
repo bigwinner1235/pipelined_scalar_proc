@@ -1,0 +1,5 @@
+# JALR must flush instructions fetched behind it; target base register is computed the instruction immediately before the jalr (RAW hazard into a jump)
+# addr             value
+0000000000000100   fffffffffffffbad
+0000000000000108   000000000000002a
+0000000000000110   000000000000000c

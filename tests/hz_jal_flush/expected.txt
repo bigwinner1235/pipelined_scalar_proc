@@ -1,0 +1,5 @@
+# JAL must flush instructions fetched behind it before the target resolves; checks link register (pc+4) value
+# addr             value
+0000000000000100   0000000000000000
+0000000000000108   000000000000002a
+0000000000000110   0000000000000008
