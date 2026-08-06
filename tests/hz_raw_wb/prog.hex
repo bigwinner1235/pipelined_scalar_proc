@@ -1,0 +1,9 @@
+93 00 90 00  // addi x1, x0, 9
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 81 10 00  // addi x2, x1, 1         -- RAW distance 3: reads regfile while WB writes it
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 20 04  // sd x2, 64(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

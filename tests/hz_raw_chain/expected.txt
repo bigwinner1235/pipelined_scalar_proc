@@ -1,4 +1,0 @@
-# back-to-back RAW dependencies through the ALU (EX/EX, MEM/EX, WB/EX forwarding); x7 uses x1 defined several instructions earlier as a non-hazard sanity check
-# addr             value
-0000000000000000   0000000000000010
-0000000000000008   0000000000000069

@@ -1,3 +1,4 @@
+#Claude wrote this
 New-Item -ItemType Directory -Force -Path build | Out-Null
 $rtl = (Get-ChildItem rtl\*.v).FullName
 & iverilog -g2005 -o build\sim tb\tb_top.v @rtl

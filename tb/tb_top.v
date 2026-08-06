@@ -1,3 +1,4 @@
+//Claude wrote this
 `timescale 1ns/1ps
 module tb_top;
   reg clk = 0, rst = 1;
@@ -9,11 +10,16 @@ module tb_top;
     .startpc(64'd0)
   );
 
+  // every test program ends with "jal x0, 0" (a self-loop). when that
+  // instruction reaches WB, every instruction before it has already
+  // written back and any store it made has already committed in MEM.
+  localparam [31:0] HALT_INST = 32'h0000006f;
+  localparam        MAX_CYCLES = 10000;
+
   reg [1023:0] testdir, path;
   integer fd, r, errors, cycles, i;
   reg [63:0] addr, expect_val, actual;
-  reg [63:0] prev_pc;
-  reg        done;
+  reg halted;
 
   // read 8 bytes little-endian out of the byte-addressed data memory
   function [63:0] read_dmem(input [63:0] a);
@@ -52,17 +58,20 @@ module tb_top;
       dut.data_mem.mem[i] = 8'h00;
     rst = 0;
 
-    // run until the PC stops advancing (self-loop), or time out
-    done    = 1'b0;
-    prev_pc = 64'hx;
-    for (cycles = 0; cycles < 10000 && !done; cycles = cycles + 1) begin
+    // run until the halt instruction retires, or until we time out
+    halted = 1'b0;
+    for (cycles = 0; cycles < MAX_CYCLES && !halted; cycles = cycles + 1) begin
       @(negedge clk);
-      if (dut.currentpc === prev_pc) done = 1'b1;
-      prev_pc = dut.currentpc;
+      if (dut.wb_instruction === HALT_INST) halted = 1'b1;
     end
 
-    if (!done)
-      $display("  WARNING: timed out after %0d cycles (no self-loop reached)", cycles);
+    if (!halted) begin
+      $display("  no halt (jal x0, 0) retired within %0d cycles", MAX_CYCLES);
+      $display("TEST FAILED (timeout)");
+      $finish;
+    end
+
+    $display("  program finished in %0d cycles", cycles);
 
     errors = 0;
     $sformat(path, "%0s/expected.txt", testdir);
@@ -86,7 +95,7 @@ module tb_top;
     end
     $fclose(fd);
 
-    if (errors == 0 && done) $display("TEST PASSED");
+    if (errors == 0) $display("TEST PASSED");
     else                     $display("TEST FAILED (%0d mismatches)", errors);
     $finish;
   end

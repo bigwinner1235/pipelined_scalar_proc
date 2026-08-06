@@ -1,0 +1,3 @@
+93 00 70 03  // addi x1, x0, 55
+23 30 10 04  // sd x1, 64(x0)          -- store data RAW distance 1: needs forward into rs2 path
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

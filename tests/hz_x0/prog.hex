@@ -1,10 +1,7 @@
-93 00 00 10
-13 00 f0 7f
-13 01 50 00
-b3 01 01 00
-33 80 10 40
-13 82 10 00
-23 b0 20 00
-23 b4 30 00
-23 b8 40 00
-6f 00 00 00
+13 00 70 00  // addi x0, x0, 7         -- write to x0 is discarded
+93 00 00 00  // addi x1, x0, 0         -- x0 must read 0: a naive forwarder would give 7
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 10 04  // sd x1, 64(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

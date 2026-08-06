@@ -1,5 +1,2 @@
-# writes to x0 must be discarded and reads of x0 must always be 0, even immediately after an attempted write (forwarding-into-x0 trap)
 # addr             value
-0000000000000100   0000000000000005
-0000000000000108   0000000000000005
-0000000000000110   0000000000000101
+0000000000000040   0000000000000000

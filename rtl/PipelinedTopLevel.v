@@ -1,34 +1,34 @@
 module PipelinedTopLevel (
-    input reset,  //Active High
-	input [63:0] startpc,
-    input clk
+    input           reset,  //Active High
+	input [63:0]    startpc,
+    input           clk
 );
 //----------------------------------------------------------------------------------IF signals
-reg [63:0] currentpc;
+reg  [63:0] currentpc;
 wire [63:0] pc_plus_4; //pc + 4 for the youngest instruction
 wire [31:0] instruction;
 
 //----------------------------------------------------------------------------------ID signals
-wire reg_write;
-wire mem_write;
-wire mem_read;
-wire reg_write_src; //1: data mem output, 0: alu output
-wire alu_a_src; //1: current pc, 0: reg out a
-wire alu_b_src; //1: immedeate gen, 0: reg out b
-wire cond_br; 
-wire jump;
-wire word; 
-wire [2:0] sign_format;
-wire [3:0] alu_op;
+wire        reg_write;
+wire        mem_write;
+wire        mem_read;
+wire        reg_write_src; //1: data mem output, 0: alu output
+wire        alu_a_src; //1: current pc, 0: reg out a
+wire        alu_b_src; //1: immedeate gen, 0: reg out b
+wire        cond_br; 
+wire        jump;
+wire        word; 
+wire [2:0]  sign_format;
+wire [3:0]  alu_op;
 wire [63:0] a;
 wire [63:0] b;
-wire[63:0] sign_ext_out;
+wire [63:0] sign_ext_out;
 
 //----------------------------------------------------------------------------------EX signals
 wire [63:0] alu_in_a;
 wire [63:0] alu_in_b;
 wire [63:0] alu_out;
-wire comp_true; //1 if condition for a branch is true
+wire        comp_true; //1 if condition for a branch is true
 
 //----------------------------------------------------------------------------------MEM signals
 wire [63:0] mem_data_out;
@@ -39,12 +39,12 @@ wire [63:0] reg_w_bus;
 wire [63:0] nextpc;
 
 //----------------------------------------------------------------------------------from IF to ID
-reg [63:0] id_currentpc;
-reg [31:0] id_instruction;
+reg  [63:0]  id_currentpc;
+reg  [31:0]  id_instruction;
 
 //----------------------------------------------------------------------------------from ID to EX
-reg [63:0] ex_currentpc;
-reg [31:0] ex_instruction;
+reg  [63:0] ex_currentpc;
+reg  [31:0] ex_instruction;
 reg         ex_reg_write;
 reg         ex_mem_write;
 reg         ex_mem_read;
@@ -54,14 +54,14 @@ reg         ex_alu_b_src;
 reg         ex_cond_br;
 reg         ex_jump;
 reg         ex_word;
-reg [3:0]   ex_alu_op;
-reg [63:0]  ex_a;
-reg [63:0]  ex_b;
-reg [63:0]  ex_sign_ext_out;
+reg  [3:0]  ex_alu_op;
+reg  [63:0] ex_a;
+reg  [63:0] ex_b;
+reg  [63:0] ex_sign_ext_out;
 
 //----------------------------------------------------------------------------------from EX to MEM
-reg [63:0] mem_currentpc;
-reg [31:0] mem_instruction;
+reg  [63:0] mem_currentpc;
+reg  [31:0] mem_instruction;
 reg         mem_reg_write;
 reg         mem_mem_write;
 reg         mem_mem_read;
@@ -69,19 +69,19 @@ reg         mem_reg_write_src;
 reg         mem_cond_br;
 reg         mem_jump;
 reg         mem_comp_true;
-reg [63:0]  mem_alu_out;
-reg [63:0]  mem_b;
+reg  [63:0] mem_alu_out;
+reg  [63:0] mem_b;
 
 //----------------------------------------------------------------------------------from MEM to WB
-reg [63:0] wb_currentpc;
-reg [31:0] wb_instruction;
-reg        wb_reg_write;
+reg  [63:0] wb_currentpc;
+reg  [31:0] wb_instruction;
+reg         wb_reg_write;
 reg         wb_reg_write_src;
 reg         wb_cond_br;
 reg         wb_jump;
 reg         wb_comp_true;
-reg [63:0]  wb_alu_out;
-reg [63:0] wb_mem_data_out;
+reg  [63:0] wb_alu_out;
+reg  [63:0] wb_mem_data_out;
 
 //----------------------------------------------------------------------------------plumbing:
 //signals from IF:

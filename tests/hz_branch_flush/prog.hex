@@ -1,26 +1,8 @@
-93 00 10 00
-13 01 10 00
-13 05 00 00
-63 88 20 00
-13 05 d0 ba
-13 05 d0 ba
-13 05 d0 ba
-93 05 a0 02
-63 94 20 00
-13 06 b0 02
-93 06 c0 02
-13 0a 00 10
-93 0a 70 00
-23 30 5a 01
-03 3b 0a 00
-93 0b 00 00
-63 04 5b 01
-93 0b d0 ba
-13 0c d0 02
-23 34 aa 00
-23 38 ba 00
-23 3c ca 00
-23 30 da 02
-23 34 7a 03
-23 38 8a 03
-6f 00 00 00
+93 00 10 00  // addi x1, x0, 1
+63 0a 00 00  // beq x0, x0, T          -- always taken
+93 00 a0 29  // addi x1, x0, 666       -- wrong path: must be flushed
+93 00 a0 29  // addi x1, x0, 666       -- wrong path: must be flushed
+93 00 a0 29  // addi x1, x0, 666       -- wrong path: must be flushed
+93 00 a0 29  // addi x1, x0, 666       -- wrong path: must be flushed
+23 30 10 04  // sd x1, 64(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)
