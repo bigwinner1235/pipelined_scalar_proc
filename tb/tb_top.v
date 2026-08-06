@@ -3,7 +3,7 @@ module tb_top;
   reg clk = 0, rst = 1;
   always #5 clk = ~clk;
 
-  SingleCycleTopLevel dut (
+  PipelinedTopLevel dut (
     .clk(clk),
     .reset(rst),
     .startpc(64'd0)
