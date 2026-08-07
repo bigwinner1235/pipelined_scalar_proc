@@ -25,18 +25,20 @@ wire [63:0] b;
 wire [63:0] sign_ext_out;
 
 //----------------------------------------------------------------------------------EX signals
-wire [63:0] alu_in_a;
-wire [63:0] alu_in_b;
+reg [63:0] alu_in_a;
+reg [63:0] alu_in_b;
 wire [63:0] alu_out;
 wire        comp_true; //1 if condition for a branch is true
 
 //----------------------------------------------------------------------------------MEM signals
 wire [63:0] mem_data_out;
+reg  [63:0] mem_data_in;
 
 //----------------------------------------------------------------------------------WB signals
 wire [63:0] from_post_mem_mux;
 wire [63:0] reg_w_bus;
 wire [63:0] nextpc;
+reg         freeze; // for a load-use dependency
 
 //----------------------------------------------------------------------------------from IF to ID
 reg  [63:0]  id_currentpc;
@@ -86,57 +88,61 @@ reg  [63:0] wb_mem_data_out;
 //----------------------------------------------------------------------------------plumbing:
 //signals from IF:
 always @ (posedge clk) begin
-    if(reset) begin
-        id_currentpc    <=   64'd0;
-        id_instruction  <=   32'h00000013; 
-    end
-    else begin
-        id_currentpc    <=   currentpc;
-        id_instruction  <=   instruction;       
+    if (!freeze || reset) begin
+        if(reset) begin
+            id_currentpc    <=   64'd0;
+            id_instruction  <=   32'h00000013; 
+        end
+        else begin
+            id_currentpc    <=   currentpc;
+            id_instruction  <=   instruction;       
+        end
     end
 end
 
 //signals from ID:
 always @ (posedge clk) begin
-    if(reset)begin
-        //control signals:
-        ex_reg_write        <=  1'b0;
-        ex_mem_write        <=  1'b0; 
-        ex_mem_read         <=  1'b0;
-        ex_reg_write_src    <=  1'b0;
-        ex_alu_a_src        <=  1'b0;
-        ex_alu_b_src        <=  1'b0; 
-        ex_cond_br          <=  1'b0;
-        ex_jump             <=  1'b0;
-        ex_word             <=  1'b0;
-        ex_alu_op           <=  4'b0; 
-        ex_a                <=  1'b0;
-        ex_b                <=  1'b0;
-        ex_sign_ext_out     <=  1'b0;        
-    end
-    else begin
-        ex_currentpc        <=  id_currentpc;
-        ex_instruction      <=  id_instruction;
-        //control signals:
-        ex_reg_write        <=  reg_write;
-        ex_mem_write        <=  mem_write;
-        ex_mem_read         <=  mem_read;
-        ex_reg_write_src    <=  reg_write_src; 
-        ex_alu_a_src        <=  alu_a_src;
-        ex_alu_b_src        <=  alu_b_src;
-        ex_cond_br          <=  cond_br;
-        ex_jump             <=  jump; 
-        ex_word             <=  word; 
-        ex_alu_op           <=  alu_op;
-        ex_a                <=  a;
-        ex_b                <=  b;
-        ex_sign_ext_out     <=  sign_ext_out;   
+    if (!freeze || reset) begin
+        if(reset)begin
+            //control signals:
+            ex_reg_write        <=  1'b0;
+            ex_mem_write        <=  1'b0; 
+            ex_mem_read         <=  1'b0;
+            ex_reg_write_src    <=  1'b0;
+            ex_alu_a_src        <=  1'b0;
+            ex_alu_b_src        <=  1'b0; 
+            ex_cond_br          <=  1'b0;
+            ex_jump             <=  1'b0;
+            ex_word             <=  1'b0;
+            ex_alu_op           <=  4'b0; 
+            ex_a                <=  1'b0;
+            ex_b                <=  1'b0;
+            ex_sign_ext_out     <=  1'b0;        
+        end
+        else begin
+            ex_currentpc        <=  id_currentpc;
+            ex_instruction      <=  id_instruction;
+            //control signals:
+            ex_reg_write        <=  reg_write;
+            ex_mem_write        <=  mem_write;
+            ex_mem_read         <=  mem_read;
+            ex_reg_write_src    <=  reg_write_src; 
+            ex_alu_a_src        <=  alu_a_src;
+            ex_alu_b_src        <=  alu_b_src;
+            ex_cond_br          <=  cond_br;
+            ex_jump             <=  jump; 
+            ex_word             <=  word; 
+            ex_alu_op           <=  alu_op;
+            ex_a                <=  a;
+            ex_b                <=  b;
+            ex_sign_ext_out     <=  sign_ext_out;   
+        end
     end
 end
 
 //signals from EX:
 always @ (posedge clk) begin
-    if(reset)begin
+    if(reset || freeze)begin
         //control signals:
         mem_reg_write       <=  1'b0; 
         mem_mem_write       <=  1'b0; 
@@ -189,10 +195,12 @@ end
 
 //-----------------------------------------IF-----------------------------------------
 always @(posedge clk) begin
-    if(reset)
-        currentpc <= startpc;
-    else
-        currentpc <= nextpc;
+    if(!freeze || reset) begin
+        if(reset)
+            currentpc <= startpc;
+        else
+            currentpc <= nextpc;
+    end
 end    
 
 InstructionMemory imem(
@@ -220,7 +228,6 @@ ControlUnit control(
     .alu_op(alu_op)
 );
 
-
 RegFile regfile(
     .write_enable(wb_reg_write),
     .clk(clk),
@@ -232,7 +239,6 @@ RegFile regfile(
     .b(b)
 );
 
-
 SignExtender sign_ext(
     .instruction(id_instruction[31:7]),
     .format(sign_format),
@@ -240,9 +246,52 @@ SignExtender sign_ext(
 );
 
 //-----------------------------------------EX-----------------------------------------
-assign alu_in_a = (ex_alu_a_src)? ex_currentpc : ex_a;
-assign alu_in_b = (ex_alu_b_src)? ex_sign_ext_out : ex_b;
-
+//forwarding to ALU
+always@(*) begin
+    case(ex_alu_a_src)
+       1'b1 : alu_in_a = ex_currentpc;
+       1'b0 : begin
+            //forward alu results from mem
+            if((ex_instruction[19:15] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && !mem_reg_write_src) begin
+                alu_in_a = mem_alu_out;
+            end
+            //forward anything from wb
+            else if((ex_instruction[19:15] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write) begin
+                alu_in_a = reg_w_bus;
+            end
+            else 
+                alu_in_a = ex_a;
+       end
+    endcase
+end
+always@(*) begin
+    case(ex_alu_b_src)
+       1'b1 : alu_in_b = ex_sign_ext_out;
+       1'b0 : begin
+            //forward alu results from ex/mem pipeline reg
+            if((ex_instruction[24:20] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && !mem_reg_write_src) begin
+                alu_in_b = mem_alu_out;
+            end
+            //forward anything from mem/wb pipeline reg
+            else if((ex_instruction[24:20] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write) begin
+                alu_in_b = reg_w_bus;
+            end
+            else 
+                alu_in_b = ex_b;
+       end
+    endcase
+end
+//hazard unit
+always@(*) begin
+    if((ex_instruction[19:15] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && mem_reg_write_src) begin
+        freeze = 1'b1;
+    end
+    else if ((ex_instruction[24:20] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && mem_reg_write_src) begin
+        freeze = 1'b1;
+    end
+    else
+        freeze = 1'b0;
+end
 ALU alu(
     .a(alu_in_a),
     .b(alu_in_b),
@@ -259,12 +308,21 @@ Comparator comp(
 );
 
 //-----------------------------------------MEM-----------------------------------------
+//forwarding to write to memory
+always@(*) begin
+    if((mem_instruction[24:20] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write) begin
+        mem_data_in = reg_w_bus;
+    end
+    else 
+        mem_data_in = mem_b;
+end
+
 DataMemory data_mem(
     .write_enable(mem_mem_write),
     .read_enable(mem_mem_read), 
     .clk(clk),
     .address(mem_alu_out), 
-    .data_in(mem_b),
+    .data_in(mem_data_in),
     .funct3(mem_instruction[14:12]),
     .data_out(mem_data_out)
 );
