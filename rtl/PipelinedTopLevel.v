@@ -25,10 +25,15 @@ wire [63:0] b;
 wire [63:0] sign_ext_out;
 
 //----------------------------------------------------------------------------------EX signals
-reg [63:0] alu_in_a;
-reg [63:0] alu_in_b;
+//cononical reg outputs(needed for comparator accuracy)
+reg [63:0] post_alu_forwarding_a;
+reg [63:0] post_alu_forwarding_b;
+
+wire [63:0] alu_in_a;
+wire [63:0] alu_in_b;
 wire [63:0] alu_out;
 wire        comp_true; //1 if condition for a branch is true
+reg flush; //flag for flushing
 
 //----------------------------------------------------------------------------------MEM signals
 wire [63:0] mem_data_out;
@@ -37,7 +42,7 @@ reg  [63:0] mem_data_in;
 //----------------------------------------------------------------------------------WB signals
 wire [63:0] from_post_mem_mux;
 wire [63:0] reg_w_bus;
-wire [63:0] nextpc;
+reg  [63:0] nextpc;
 reg         freeze; // for a load-use dependency
 
 //----------------------------------------------------------------------------------from IF to ID
@@ -89,7 +94,7 @@ reg  [63:0] wb_mem_data_out;
 //signals from IF:
 always @ (posedge clk) begin
     if (!freeze || reset) begin
-        if(reset) begin
+        if(reset || flush) begin
             id_currentpc    <=   64'd0;
             id_instruction  <=   32'h00000013; 
         end
@@ -103,7 +108,7 @@ end
 //signals from ID:
 always @ (posedge clk) begin
     if (!freeze || reset) begin
-        if(reset)begin
+        if(reset || flush)begin
             //control signals:
             ex_reg_write        <=  1'b0;
             ex_mem_write        <=  1'b0; 
@@ -142,7 +147,7 @@ end
 
 //signals from EX:
 always @ (posedge clk) begin
-    if(reset || freeze)begin
+    if(reset || freeze || flush)begin
         //control signals:
         mem_reg_write       <=  1'b0; 
         mem_mem_write       <=  1'b0; 
@@ -246,41 +251,37 @@ SignExtender sign_ext(
 );
 
 //-----------------------------------------EX-----------------------------------------
-//forwarding to ALU
+
+//mux between reg file and alt alu inputs
+assign alu_in_a = (ex_alu_a_src)? ex_currentpc : post_alu_forwarding_a;
+assign alu_in_b = (ex_alu_b_src)? ex_sign_ext_out : post_alu_forwarding_b;
+
+//forwarding unit
 always@(*) begin
-    case(ex_alu_a_src)
-       1'b1 : alu_in_a = ex_currentpc;
-       1'b0 : begin
             //forward alu results from mem
             if((ex_instruction[19:15] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && !mem_reg_write_src) begin
-                alu_in_a = mem_alu_out;
+                post_alu_forwarding_a = mem_alu_out;
             end
             //forward anything from wb
             else if((ex_instruction[19:15] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write) begin
-                alu_in_a = reg_w_bus;
+                post_alu_forwarding_a = reg_w_bus;
             end
             else 
-                alu_in_a = ex_a;
-       end
-    endcase
+                post_alu_forwarding_a = ex_a;
 end
 always@(*) begin
-    case(ex_alu_b_src)
-       1'b1 : alu_in_b = ex_sign_ext_out;
-       1'b0 : begin
             //forward alu results from ex/mem pipeline reg
             if((ex_instruction[24:20] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && !mem_reg_write_src) begin
-                alu_in_b = mem_alu_out;
+                post_alu_forwarding_b = mem_alu_out;
             end
             //forward anything from mem/wb pipeline reg
             else if((ex_instruction[24:20] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write) begin
-                alu_in_b = reg_w_bus;
+                post_alu_forwarding_b = reg_w_bus;
             end
             else 
-                alu_in_b = ex_b;
-       end
-    endcase
+                post_alu_forwarding_b = ex_b;
 end
+
 //hazard unit
 always@(*) begin
     if((ex_instruction[19:15] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && mem_reg_write_src) begin
@@ -292,6 +293,7 @@ always@(*) begin
     else
         freeze = 1'b0;
 end
+
 ALU alu(
     .a(alu_in_a),
     .b(alu_in_b),
@@ -302,8 +304,8 @@ ALU alu(
 
 Comparator comp(
     .funct3(ex_instruction[14:12]),
-    .a(ex_a),
-    .b(ex_b),
+    .a(post_alu_forwarding_a),
+    .b(post_alu_forwarding_b),
     .taken(comp_true)
 );
 
@@ -330,6 +332,23 @@ DataMemory data_mem(
 //-----------------------------------------WB-----------------------------------------
 assign from_post_mem_mux = (wb_reg_write_src)? wb_mem_data_out : wb_alu_out;
 assign reg_w_bus = (wb_jump)? (wb_currentpc + 64'd4) : from_post_mem_mux;
-assign nextpc = (wb_jump || (wb_cond_br && wb_comp_true))? {wb_alu_out[63:1],1'b0} : pc_plus_4;
 
+//next PC logic:
+//Check (ex_jump || (ex_cond_br && comp_true)) in EX stage and if target address !== pc of the instruction in ID stage.
+//if not equal, set a flag and insert no ops in the IF and ID stages while that flag is true.
+//In the WB stage, check (for wb_jump || (wb_cond_br && wb_comp_true)) and if true set the flag false again.
+always @(posedge clk) begin
+    if(reset)
+        flush <= 1'b0;
+    else if(wb_jump || (wb_cond_br && wb_comp_true))
+        flush <= 1'b0;
+    else if((ex_jump || (ex_cond_br && comp_true)) && (id_currentpc != alu_out))
+        flush <= 1'b1;
+end
+always @(*) begin
+    if(wb_jump || (wb_cond_br && wb_comp_true))
+        nextpc = {wb_alu_out[63:1],1'b0};
+    else
+        nextpc = pc_plus_4;
+end
 endmodule
