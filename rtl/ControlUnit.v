@@ -11,7 +11,9 @@ module ControlUnit (
     output reg jump, //set up for a jump (mux pc+4 with reg write bus)
     output reg word, //for alu
     output reg [2:0] sign_format,
-    output reg [3:0] alu_op
+    output reg [3:0] alu_op,
+    output reg rs1_needed, //for hazards
+    output reg rs2_needed //for hazards
 );
 
 // match SignExtender.v
@@ -37,6 +39,8 @@ always @(*) begin
     word = 0;
     sign_format = I_TYPE;
     alu_op = ALU_ADD;
+    rs1_needed = 1;
+    rs2_needed = 1;
 
     case (opcode)
         7'b011_0011: begin //R-type
@@ -114,6 +118,7 @@ always @(*) begin
         end
 
         7'b001_0011: begin //I-type ALU
+            rs2_needed = 0;
             reg_write = 1;
             alu_b_src = 1;
             sign_format = I_TYPE;
@@ -141,6 +146,7 @@ always @(*) begin
         end
 
         7'b001_1011: begin //I-type W (ADDIW, SLLIW, SRLIW, SRAIW)
+            rs2_needed = 0;
             reg_write = 1;
             alu_b_src = 1;
             word = 1;
@@ -163,6 +169,7 @@ always @(*) begin
         end
 
         7'b000_0011: begin //loads (LB LH LW LD LBU LHU LWU)
+            rs2_needed =  0;
             reg_write = 1;
             mem_read = 1;
             reg_write_src = 1; //write bus from data memory
@@ -195,6 +202,8 @@ always @(*) begin
             alu_b_src = 1; //operand b = imm -> target = pc + imm
             sign_format = J_TYPE;
             alu_op = ALU_ADD;
+            rs1_needed = 0;
+            rs2_needed = 0;
         end
 
         7'b110_0111: begin //JALR
@@ -203,6 +212,7 @@ always @(*) begin
             alu_b_src = 1; //operand b = imm -> target = rs1 + imm
             sign_format = I_TYPE;
             alu_op = ALU_ADD;
+            rs2_needed = 0;
         end
 
         7'b011_0111: begin //LUI
@@ -210,6 +220,8 @@ always @(*) begin
             alu_b_src = 1;
             sign_format = U_TYPE;
             alu_op = ALU_PASS_B;
+            rs1_needed = 0;
+            rs2_needed = 0;
         end
 
         7'b001_0111: begin //AUIPC
@@ -218,6 +230,8 @@ always @(*) begin
             alu_b_src = 1; //operand b = imm
             sign_format = U_TYPE;
             alu_op = ALU_ADD;
+            rs1_needed = 0;
+            rs2_needed = 0;
         end
     endcase
 end

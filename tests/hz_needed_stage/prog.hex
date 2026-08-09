@@ -1,0 +1,17 @@
+13 01 00 00  // addi x2, x0, 0         -- known stale value for x2
+93 00 70 00  // addi x1, x0, 7
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 10 04  // sd x1, 64(x0)
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+03 31 00 04  // ld x2, 64(x0)          -- x2 = 7
+93 01 11 00  // addi x3, x2, 1         -- true load-use: must freeze
+37 12 00 00  // lui x4, 1              -- in ID during the hazard; the hazard unit must use the EX-stage rs_needed, not this one
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 34 30 04  // sd x3, 72(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

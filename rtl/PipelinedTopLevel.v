@@ -18,6 +18,8 @@ wire        alu_b_src; //1: immedeate gen, 0: reg out b
 wire        cond_br; 
 wire        jump;
 wire        word; 
+wire        rs1_needed; //for hazards
+wire        rs2_needed; //for hazards
 wire [2:0]  sign_format;
 wire [3:0]  alu_op;
 wire [63:0] a;
@@ -66,6 +68,9 @@ reg  [3:0]  ex_alu_op;
 reg  [63:0] ex_a;
 reg  [63:0] ex_b;
 reg  [63:0] ex_sign_ext_out;
+reg         ex_rs1_needed;
+reg         ex_rs2_needed;
+
 
 //----------------------------------------------------------------------------------from EX to MEM
 reg  [63:0] mem_currentpc;
@@ -125,7 +130,9 @@ always @ (posedge clk) begin
             ex_alu_op           <=  4'b0; 
             ex_a                <=  1'b0;
             ex_b                <=  1'b0;
-            ex_sign_ext_out     <=  1'b0;        
+            ex_sign_ext_out     <=  1'b0;
+            ex_rs1_needed       <=  1'b0;
+            ex_rs2_needed       <=  1'b0;        
         end
         else begin
             ex_currentpc        <=  id_currentpc;
@@ -143,7 +150,9 @@ always @ (posedge clk) begin
             ex_alu_op           <=  alu_op;
             ex_a                <=  a;
             ex_b                <=  b;
-            ex_sign_ext_out     <=  sign_ext_out;   
+            ex_sign_ext_out     <=  sign_ext_out;
+            ex_rs1_needed       <=  rs1_needed;
+            ex_rs2_needed       <=  rs2_needed;
         end
     end
 end
@@ -199,7 +208,6 @@ always @ (posedge clk) begin
         //signals originated in EX:
         wb_comp_true        <=  mem_comp_true;
         wb_alu_out          <=  mem_alu_out;
-        wb_redirect         <=  mem_redirect;
         //signals originated in MEM:
         wb_mem_data_out     <=  mem_data_out;
     end
@@ -237,7 +245,9 @@ ControlUnit control(
     .jump(jump),
     .word(word),
     .sign_format(sign_format),
-    .alu_op(alu_op)
+    .alu_op(alu_op),
+    .rs1_needed(rs1_needed),
+    .rs2_needed(rs2_needed)
 );
 
 RegFile regfile(
@@ -291,15 +301,17 @@ end
 
 //hazard unit
 always@(*) begin
-    if((ex_instruction[19:15] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && mem_reg_write_src) begin
+    if((ex_instruction[19:15] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && mem_reg_write_src && ex_rs1_needed) begin
         freeze = 1'b1;
     end
-    else if ((ex_instruction[24:20] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && mem_reg_write_src) begin
+    else if ((ex_instruction[24:20] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && mem_reg_write_src && !ex_mem_write && ex_rs2_needed) begin
         freeze = 1'b1;
     end
     else
         freeze = 1'b0;
 end
+
+assign redirect = (ex_jump || (ex_cond_br && comp_true)) && (id_currentpc != alu_out) && !freeze; //if there was a branch misprediction
 
 ALU alu(
     .a(alu_in_a),
@@ -336,18 +348,17 @@ DataMemory data_mem(
     .data_out(mem_data_out)
 );
 
+//next PC logic:
+assign flush = redirect || mem_redirect;
+always @(*) begin
+    if(mem_redirect)
+        nextpc = {mem_alu_out[63:1],1'b0};
+    else
+        nextpc = pc_plus_4;
+end
+
 //-----------------------------------------WB-----------------------------------------
 assign from_post_mem_mux = (wb_reg_write_src)? wb_mem_data_out : wb_alu_out;
 assign reg_w_bus = (wb_jump)? (wb_currentpc + 64'd4) : from_post_mem_mux;
 
-//next PC logic:
-assign redirect = (ex_jump || (ex_cond_br && comp_true)) && (id_currentpc != alu_out) && !freeze; //redirect is a signal in EX
-assign flush = redirect || mem_redirect || wb_redirect;
-
-always @(*) begin
-    if(wb_redirect)
-        nextpc = {wb_alu_out[63:1],1'b0};
-    else
-        nextpc = pc_plus_4;
-end
 endmodule

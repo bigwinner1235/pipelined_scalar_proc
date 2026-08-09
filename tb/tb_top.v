@@ -17,7 +17,7 @@ module tb_top;
   localparam        MAX_CYCLES = 10000;
 
   reg [1023:0] testdir, path;
-  integer fd, r, errors, cycles, i;
+  integer fd, r, errors, cycles, i, budget;
   reg [63:0] addr, expect_val, actual;
   reg halted;
 
@@ -94,6 +94,18 @@ module tb_top;
       end
     end
     $fclose(fd);
+
+    // optional cycle budget: perf regression tests fail if they get slower
+    $sformat(path, "%0s/max_cycles.txt", testdir);
+    fd = $fopen(path, "r");
+    if (fd != 0) begin
+      r = $fscanf(fd, " %d", budget);
+      $fclose(fd);
+      if (r == 1 && cycles > budget) begin
+        $display("  took %0d cycles, budget is %0d", cycles, budget);
+        errors = errors + 1;
+      end
+    end
 
     if (errors == 0) $display("TEST PASSED");
     else                     $display("TEST FAILED (%0d mismatches)", errors);

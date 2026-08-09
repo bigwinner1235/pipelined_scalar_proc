@@ -239,11 +239,14 @@ def jal_off(w):
               (((w >> 20) & 1) << 11) | (((w >> 21) & 0x3FF) << 1), 21)
 
 # ---------------------------------------------------------------- output
-def emit(name, src):
+def emit(name, src, max_cycles=None):
     prog, labels = assemble(src)
     expected = simulate(prog, labels)
     d = os.path.join(TESTS, name)
     os.makedirs(d)
+    if max_cycles is not None:
+        with open(os.path.join(d, 'max_cycles.txt'), 'w', newline='\n') as f:
+            f.write(f'{max_cycles}\n')
     with open(os.path.join(d, 'prog.hex'), 'w', newline='\n') as f:
         for w, asm, note, _ in prog:
             bs = ' '.join(f'{(w >> (8*k)) & 0xFF:02x}' for k in range(4))
@@ -537,6 +540,94 @@ hz_branch_next = blk(
     'halt',
 )
 
+hz_needed_stage = blk(
+    'addi x2, x0, 0     # known stale value for x2',
+    'addi x1, x0, 7',
+    'nop', 'nop', 'nop',
+    'sd x1, 64(x0)',
+    'nop', 'nop', 'nop',
+    'ld x2, 64(x0)      # x2 = 7',
+    'addi x3, x2, 1     # true load-use: must freeze',
+    'lui x4, 1          # in ID during the hazard; the hazard unit must use the EX-stage rs_needed, not this one',
+    'nop', 'nop', 'nop',
+    'sd x3, 72(x0)',
+    'halt',
+)
+
+# two control transfers in flight at once: a jump-to-next takes the no-flush
+# path, so a taken branch 0/1/2 slots behind it coexists with it in the pipe
+hz_jalnext_0 = blk(
+    'addi x3, x0, 0',
+    'jal x1, N          # target = next instruction: no-flush path',
+    'N: beq x0, x0, T   # taken branch right behind it',
+    'addi x3, x0, 666   # wrong path',
+    'addi x3, x0, 666   # wrong path',
+    'nop', 'nop',
+    'T: sd x3, 64(x0)',
+    'sd x1, 72(x0)      # jal link value',
+    'halt',
+)
+
+hz_jalnext_1 = blk(
+    'addi x3, x0, 0',
+    'jal x1, N          # target = next instruction: no-flush path',
+    'N: nop',
+    'beq x0, x0, T      # in EX while the jal is further down the pipe',
+    'addi x3, x0, 666   # wrong path',
+    'addi x3, x0, 666   # wrong path',
+    'nop', 'nop',
+    'T: sd x3, 64(x0)',
+    'sd x1, 72(x0)',
+    'halt',
+)
+
+hz_jalnext_2 = blk(
+    'addi x3, x0, 0',
+    'jal x1, N          # target = next instruction: no-flush path',
+    'N: nop',
+    'nop',
+    'beq x0, x0, T',
+    'addi x3, x0, 666   # wrong path',
+    'addi x3, x0, 666   # wrong path',
+    'nop', 'nop',
+    'T: sd x3, 64(x0)',
+    'sd x1, 72(x0)',
+    'halt',
+)
+
+# perf regressions: these carry a max_cycles budget and fail if a false
+# stall or extra branch penalty creeps back in. Budgets are exact for the
+# current pipeline (MEM-stage redirect, format-aware hazard unit); update
+# them deliberately when the pipeline changes.
+perf_falsefreeze = blk(
+    'ld x2, 64(x0)',
+    'addi x3, x0, 2     # independent, but imm bits [24:20] read as "x2"',
+    'nop', 'nop', 'nop',
+    'sd x3, 72(x0)',
+    'halt',
+)
+
+perf_load_store = blk(
+    'addi x1, x0, 42',
+    'nop', 'nop', 'nop',
+    'sd x1, 64(x0)',
+    'nop', 'nop', 'nop',
+    'ld x2, 64(x0)',
+    'sd x2, 72(x0)      # store data from load: MEM forward, no stall needed',
+    'halt',
+)
+
+perf_loop8 = blk(
+    'addi x1, x0, 8     # counter',
+    'addi x2, x0, 0',
+    'L: addi x2, x2, 1',
+    'addi x1, x1, -1',
+    'bne x1, x0, L',
+    'nop', 'nop', 'nop',
+    'sd x2, 64(x0)',
+    'halt',
+)
+
 hz_x0 = blk(
     'addi x0, x0, 7     # write to x0 is discarded',
     'addi x1, x0, 0     # x0 must read 0: a naive forwarder would give 7',
@@ -560,6 +651,13 @@ if __name__ == '__main__':
     emit('hz_load_branch', hz_load_branch)
     emit('hz_load_jalr', hz_load_jalr)
     emit('hz_branch_next', hz_branch_next)
+    emit('hz_needed_stage', hz_needed_stage)
+    emit('hz_jalnext_0', hz_jalnext_0)
+    emit('hz_jalnext_1', hz_jalnext_1)
+    emit('hz_jalnext_2', hz_jalnext_2)
+    emit('perf_falsefreeze', perf_falsefreeze, max_cycles=10)
+    emit('perf_load_store', perf_load_store, max_cycles=14)
+    emit('perf_loop8', perf_loop8, max_cycles=55)
     emit('hz_branch_flush', hz_branch_flush)
     emit('hz_jal_flush', hz_jal_flush)
     emit('hz_jalr_flush', hz_jalr_flush)

@@ -1,0 +1,11 @@
+93 01 00 00  // addi x3, x0, 0
+ef 00 40 00  // jal x1, N              -- target = next instruction: no-flush path
+13 00 00 00  // nop
+63 0a 00 00  // beq x0, x0, T          -- in EX while the jal is further down the pipe
+93 01 a0 29  // addi x3, x0, 666       -- wrong path
+93 01 a0 29  // addi x3, x0, 666       -- wrong path
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 30 04  // sd x3, 64(x0)
+23 34 10 04  // sd x1, 72(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

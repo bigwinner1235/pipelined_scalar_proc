@@ -1,0 +1,11 @@
+93 00 a0 02  // addi x1, x0, 42
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 10 04  // sd x1, 64(x0)
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+03 31 00 04  // ld x2, 64(x0)
+23 34 20 04  // sd x2, 72(x0)          -- store data from load: MEM forward, no stall needed
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)
