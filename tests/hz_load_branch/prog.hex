@@ -1,0 +1,20 @@
+13 01 00 00  // addi x2, x0, 0         -- give x2 a known stale value
+93 00 10 00  // addi x1, x0, 1
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 10 04  // sd x1, 64(x0)
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+03 31 00 04  // ld x2, 64(x0)          -- x2 = 1
+63 0e 01 00  // beq x2, x0, BAD        -- stale x2 (0) says taken, real x2 (1) says not taken
+93 01 70 00  // addi x3, x0, 7
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 34 30 04  // sd x3, 72(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)
+93 01 a0 29  // addi x3, x0, 666
+23 34 30 04  // sd x3, 72(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

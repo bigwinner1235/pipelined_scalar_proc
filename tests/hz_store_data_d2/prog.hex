@@ -1,0 +1,4 @@
+93 00 70 03  // addi x1, x0, 55
+13 00 00 00  // nop
+23 30 10 04  // sd x1, 64(x0)          -- store data RAW distance 2: EX->EX forward must reach mem_b
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

@@ -1,0 +1,11 @@
+93 00 50 00  // addi x1, x0, 5
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+63 02 00 00  // beq x0, x0, N          -- taken, target is the very next instruction
+93 80 10 00  // addi x1, x1, 1         -- must execute exactly once
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 10 04  // sd x1, 64(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

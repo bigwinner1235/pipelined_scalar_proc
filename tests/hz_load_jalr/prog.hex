@@ -1,0 +1,19 @@
+13 03 00 00  // addi x6, x0, 0         -- known stale value
+93 02 40 03  // addi x5, x0, T
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 50 04  // sd x5, 64(x0)
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+03 33 00 04  // ld x6, 64(x0)
+67 00 03 00  // jalr x0, 0(x6)         -- load-use into jalr
+93 00 a0 29  // addi x1, x0, 666       -- wrong path
+93 00 a0 29  // addi x1, x0, 666       -- wrong path
+93 00 90 00  // addi x1, x0, 9
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 34 10 04  // sd x1, 72(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

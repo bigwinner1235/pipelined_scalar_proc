@@ -477,6 +477,66 @@ hz_jalr_flush = blk(
     'halt',
 )
 
+hz_store_data_d2 = blk(
+    'addi x1, x0, 55',
+    'nop',
+    'sd x1, 64(x0)      # store data RAW distance 2: EX->EX forward must reach mem_b',
+    'halt',
+)
+
+hz_load_store = blk(
+    'addi x1, x0, 42',
+    'nop', 'nop', 'nop',
+    'sd x1, 64(x0)',
+    'nop', 'nop', 'nop',
+    'ld x2, 64(x0)',
+    'sd x2, 72(x0)      # store data comes straight from the load',
+    'halt',
+)
+
+hz_load_branch = blk(
+    'addi x2, x0, 0     # give x2 a known stale value',
+    'addi x1, x0, 1',
+    'nop', 'nop', 'nop',
+    'sd x1, 64(x0)',
+    'nop', 'nop', 'nop',
+    'ld x2, 64(x0)      # x2 = 1',
+    'beq x2, x0, BAD    # stale x2 (0) says taken, real x2 (1) says not taken',
+    'addi x3, x0, 7',
+    'nop', 'nop', 'nop',
+    'sd x3, 72(x0)',
+    'halt',
+    'BAD: addi x3, x0, 666',
+    'sd x3, 72(x0)',
+    'halt',
+)
+
+hz_load_jalr = blk(
+    'addi x6, x0, 0     # known stale value',
+    'addi x5, x0, T',
+    'nop', 'nop', 'nop',
+    'sd x5, 64(x0)',
+    'nop', 'nop', 'nop',
+    'ld x6, 64(x0)',
+    'jalr x0, 0(x6)     # load-use into jalr',
+    'addi x1, x0, 666   # wrong path',
+    'addi x1, x0, 666   # wrong path',
+    'T: addi x1, x0, 9',
+    'nop', 'nop', 'nop',
+    'sd x1, 72(x0)',
+    'halt',
+)
+
+hz_branch_next = blk(
+    'addi x1, x0, 5',
+    'nop', 'nop', 'nop',
+    'beq x0, x0, N      # taken, target is the very next instruction',
+    'N: addi x1, x1, 1  # must execute exactly once',
+    'nop', 'nop', 'nop',
+    'sd x1, 64(x0)',
+    'halt',
+)
+
 hz_x0 = blk(
     'addi x0, x0, 7     # write to x0 is discarded',
     'addi x1, x0, 0     # x0 must read 0: a naive forwarder would give 7',
@@ -495,6 +555,11 @@ if __name__ == '__main__':
     emit('hz_raw_wb', hz_raw_wb)
     emit('hz_load_use', hz_load_use)
     emit('hz_store_data', hz_store_data)
+    emit('hz_store_data_d2', hz_store_data_d2)
+    emit('hz_load_store', hz_load_store)
+    emit('hz_load_branch', hz_load_branch)
+    emit('hz_load_jalr', hz_load_jalr)
+    emit('hz_branch_next', hz_branch_next)
     emit('hz_branch_flush', hz_branch_flush)
     emit('hz_jal_flush', hz_jal_flush)
     emit('hz_jalr_flush', hz_jalr_flush)

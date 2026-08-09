@@ -24,7 +24,7 @@ wire [63:0] a;
 wire [63:0] b;
 wire [63:0] sign_ext_out;
 
-//----------------------------------------------------------------------------------EX signals
+//------------------------------------------------1----------------------------------EX signals
 //cononical reg outputs(needed for comparator accuracy)
 reg [63:0] post_alu_forwarding_a;
 reg [63:0] post_alu_forwarding_b;
@@ -33,7 +33,8 @@ wire [63:0] alu_in_a;
 wire [63:0] alu_in_b;
 wire [63:0] alu_out;
 wire        comp_true; //1 if condition for a branch is true
-reg flush; //flag for flushing
+wire flush; //flag for flushing
+wire redirect; //if a given instruction causes the next instruction to not be at pc+4
 
 //----------------------------------------------------------------------------------MEM signals
 wire [63:0] mem_data_out;
@@ -78,6 +79,7 @@ reg         mem_jump;
 reg         mem_comp_true;
 reg  [63:0] mem_alu_out;
 reg  [63:0] mem_b;
+reg         mem_redirect;
 
 //----------------------------------------------------------------------------------from MEM to WB
 reg  [63:0] wb_currentpc;
@@ -89,6 +91,7 @@ reg         wb_jump;
 reg         wb_comp_true;
 reg  [63:0] wb_alu_out;
 reg  [63:0] wb_mem_data_out;
+reg         wb_redirect;
 
 //----------------------------------------------------------------------------------plumbing:
 //signals from IF:
@@ -147,7 +150,7 @@ end
 
 //signals from EX:
 always @ (posedge clk) begin
-    if(reset || freeze || flush)begin
+    if(reset || freeze)begin
         //control signals:
         mem_reg_write       <=  1'b0; 
         mem_mem_write       <=  1'b0; 
@@ -155,6 +158,7 @@ always @ (posedge clk) begin
         mem_reg_write_src   <=  1'b0; 
         mem_cond_br         <=  1'b0; 
         mem_jump            <=  1'b0;    
+        mem_redirect        <=  1'b0;
     end
     else begin
         mem_currentpc       <=  ex_currentpc;
@@ -169,7 +173,8 @@ always @ (posedge clk) begin
         //signals originated in EX:
         mem_comp_true       <=  comp_true;
         mem_alu_out         <=  alu_out;
-        mem_b               <=  ex_b;   
+        mem_b               <=  post_alu_forwarding_b;   
+        mem_redirect        <=  redirect;
     end
 end
 
@@ -180,7 +185,8 @@ always @ (posedge clk) begin
         wb_reg_write        <=  1'b0; 
         wb_reg_write_src    <=  1'b0;
         wb_cond_br          <=  1'b0; 
-        wb_jump             <=  1'b0; 
+        wb_jump             <=  1'b0;
+        wb_redirect         <=  1'b0; 
     end
     else begin
         wb_currentpc        <=  mem_currentpc;
@@ -193,6 +199,7 @@ always @ (posedge clk) begin
         //signals originated in EX:
         wb_comp_true        <=  mem_comp_true;
         wb_alu_out          <=  mem_alu_out;
+        wb_redirect         <=  mem_redirect;
         //signals originated in MEM:
         wb_mem_data_out     <=  mem_data_out;
     end
@@ -334,19 +341,11 @@ assign from_post_mem_mux = (wb_reg_write_src)? wb_mem_data_out : wb_alu_out;
 assign reg_w_bus = (wb_jump)? (wb_currentpc + 64'd4) : from_post_mem_mux;
 
 //next PC logic:
-//Check (ex_jump || (ex_cond_br && comp_true)) in EX stage and if target address !== pc of the instruction in ID stage.
-//if not equal, set a flag and insert no ops in the IF and ID stages while that flag is true.
-//In the WB stage, check (for wb_jump || (wb_cond_br && wb_comp_true)) and if true set the flag false again.
-always @(posedge clk) begin
-    if(reset)
-        flush <= 1'b0;
-    else if(wb_jump || (wb_cond_br && wb_comp_true))
-        flush <= 1'b0;
-    else if((ex_jump || (ex_cond_br && comp_true)) && (id_currentpc != alu_out))
-        flush <= 1'b1;
-end
+assign redirect = (ex_jump || (ex_cond_br && comp_true)) && (id_currentpc != alu_out) && !freeze; //redirect is a signal in EX
+assign flush = redirect || mem_redirect || wb_redirect;
+
 always @(*) begin
-    if(wb_jump || (wb_cond_br && wb_comp_true))
+    if(wb_redirect)
         nextpc = {wb_alu_out[63:1],1'b0};
     else
         nextpc = pc_plus_4;
