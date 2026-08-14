@@ -13,7 +13,9 @@ module ControlUnit (
     output reg [2:0] sign_format,
     output reg [3:0] alu_op,
     output reg rs1_needed, //for hazards
-    output reg rs2_needed //for hazards
+    output reg rs2_needed, //for hazards
+    output reg illegal_instruction,
+    output reg halt
 );
 
 // match SignExtender.v
@@ -41,6 +43,8 @@ always @(*) begin
     alu_op = ALU_ADD;
     rs1_needed = 1;
     rs2_needed = 1;
+    illegal_instruction = 0;
+    halt = 0;
 
     case (opcode)
         7'b011_0011: begin //R-type
@@ -232,6 +236,15 @@ always @(*) begin
             alu_op = ALU_ADD;
             rs1_needed = 0;
             rs2_needed = 0;
+        end
+        7'b111_0011: begin // ECALL/EBREAK
+            rs1_needed = 0;
+            rs2_needed = 0;
+            halt = 1;
+        end
+        default: begin
+            illegal_instruction = 1;
+            halt = 1;
         end
     endcase
 end

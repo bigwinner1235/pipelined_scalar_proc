@@ -20,6 +20,8 @@ wire        jump;
 wire        word; 
 wire        rs1_needed; //for hazards
 wire        rs2_needed; //for hazards
+wire        illegal_instruction;
+wire        trap;
 wire [2:0]  sign_format;
 wire [3:0]  alu_op;
 wire [63:0] a;
@@ -47,6 +49,8 @@ wire [63:0] from_post_mem_mux;
 wire [63:0] reg_w_bus;
 reg  [63:0] nextpc;
 reg         freeze; // for a load-use dependency
+reg         halt; //for ecall/ebreak
+reg         illegal; //flag illegal instructions
 
 //----------------------------------------------------------------------------------from IF to ID
 reg  [63:0]  id_currentpc;
@@ -70,7 +74,8 @@ reg  [63:0] ex_b;
 reg  [63:0] ex_sign_ext_out;
 reg         ex_rs1_needed;
 reg         ex_rs2_needed;
-
+reg         ex_illegal_instruction;
+reg         ex_trap;
 
 //----------------------------------------------------------------------------------from EX to MEM
 reg  [63:0] mem_currentpc;
@@ -85,6 +90,8 @@ reg         mem_comp_true;
 reg  [63:0] mem_alu_out;
 reg  [63:0] mem_b;
 reg         mem_redirect;
+reg         mem_illegal_instruction;
+reg         mem_trap;
 
 //----------------------------------------------------------------------------------from MEM to WB
 reg  [63:0] wb_currentpc;
@@ -101,7 +108,7 @@ reg         wb_redirect;
 //----------------------------------------------------------------------------------plumbing:
 //signals from IF:
 always @ (posedge clk) begin
-    if (!freeze || reset) begin
+    if ((!freeze && !halt) || reset) begin
         if(reset || flush) begin
             id_currentpc    <=   64'd0;
             id_instruction  <=   32'h00000013; 
@@ -115,7 +122,7 @@ end
 
 //signals from ID:
 always @ (posedge clk) begin
-    if (!freeze || reset) begin
+    if ((!freeze && !halt) || reset) begin
         if(reset || flush)begin
             //control signals:
             ex_reg_write        <=  1'b0;
@@ -132,7 +139,9 @@ always @ (posedge clk) begin
             ex_b                <=  1'b0;
             ex_sign_ext_out     <=  1'b0;
             ex_rs1_needed       <=  1'b0;
-            ex_rs2_needed       <=  1'b0;        
+            ex_rs2_needed       <=  1'b0;  
+            ex_illegal_instruction <= 1'b0;
+            ex_trap             <=  1'b0;      
         end
         else begin
             ex_currentpc        <=  id_currentpc;
@@ -153,63 +162,73 @@ always @ (posedge clk) begin
             ex_sign_ext_out     <=  sign_ext_out;
             ex_rs1_needed       <=  rs1_needed;
             ex_rs2_needed       <=  rs2_needed;
+            ex_illegal_instruction <= illegal_instruction;
+            ex_trap             <=  trap;
         end
     end
 end
 
 //signals from EX:
 always @ (posedge clk) begin
-    if(reset || freeze)begin
-        //control signals:
-        mem_reg_write       <=  1'b0; 
-        mem_mem_write       <=  1'b0; 
-        mem_mem_read        <=  1'b0;
-        mem_reg_write_src   <=  1'b0; 
-        mem_cond_br         <=  1'b0; 
-        mem_jump            <=  1'b0;    
-        mem_redirect        <=  1'b0;
-    end
-    else begin
-        mem_currentpc       <=  ex_currentpc;
-        mem_instruction     <=  ex_instruction;
-        //control signals:
-        mem_reg_write       <=  ex_reg_write;
-        mem_mem_write       <=  ex_mem_write;
-        mem_mem_read        <=  ex_mem_read;
-        mem_reg_write_src   <=  ex_reg_write_src;
-        mem_cond_br         <=  ex_cond_br;
-        mem_jump            <=  ex_jump;
-        //signals originated in EX:
-        mem_comp_true       <=  comp_true;
-        mem_alu_out         <=  alu_out;
-        mem_b               <=  post_alu_forwarding_b;   
-        mem_redirect        <=  redirect;
+    if (!halt || reset) begin
+        if(reset || freeze)begin
+            //control signals:
+            mem_reg_write       <=  1'b0; 
+            mem_mem_write       <=  1'b0; 
+            mem_mem_read        <=  1'b0;
+            mem_reg_write_src   <=  1'b0; 
+            mem_cond_br         <=  1'b0; 
+            mem_jump            <=  1'b0;    
+            mem_redirect        <=  1'b0;
+            mem_illegal_instruction <=  1'b0;
+            mem_trap            <=  1'b0;
+        end
+        else begin
+            mem_currentpc       <=  ex_currentpc;
+            mem_instruction     <=  ex_instruction;
+            //control signals:
+            mem_reg_write       <=  ex_reg_write;
+            mem_mem_write       <=  ex_mem_write;
+            mem_mem_read        <=  ex_mem_read;
+            mem_reg_write_src   <=  ex_reg_write_src;
+            mem_cond_br         <=  ex_cond_br;
+            mem_jump            <=  ex_jump;
+            //signals originated in EX:
+            mem_comp_true       <=  comp_true;
+            mem_alu_out         <=  alu_out;
+            mem_b               <=  post_alu_forwarding_b;   
+            mem_redirect        <=  redirect;
+            mem_illegal_instruction <=  ex_illegal_instruction;
+            mem_trap            <=  ex_trap;
+        end
     end
 end
 
 //signals from MEM:
 always @ (posedge clk) begin
-    if(reset)begin
-        //control signals:
-        wb_reg_write        <=  1'b0; 
-        wb_reg_write_src    <=  1'b0;
-        wb_cond_br          <=  1'b0; 
-        wb_jump             <=  1'b0;
-        wb_redirect         <=  1'b0; 
-    end
-    else begin
-        wb_currentpc        <=  mem_currentpc;
-        wb_instruction      <=  mem_instruction;
-        //control signals:
-        wb_reg_write        <=  mem_reg_write;
-        wb_reg_write_src    <=  mem_reg_write_src;
-        wb_cond_br          <=  mem_cond_br;
-        wb_jump             <=  mem_jump;
-        //signals originated in EX:
-        wb_comp_true        <=  mem_comp_true;
-        wb_alu_out          <=  mem_alu_out;
-        //signals originated in MEM:
-        wb_mem_data_out     <=  mem_data_out;
+    if (!halt || reset) begin
+        if(reset)begin
+            //control signals:
+            wb_reg_write        <=  1'b0; 
+            wb_reg_write_src    <=  1'b0;
+            wb_cond_br          <=  1'b0; 
+            wb_jump             <=  1'b0;
+            wb_redirect         <=  1'b0; 
+        end
+        else begin
+            wb_currentpc        <=  mem_currentpc;
+            wb_instruction      <=  mem_instruction;
+            //control signals:
+            wb_reg_write        <=  mem_reg_write;
+            wb_reg_write_src    <=  mem_reg_write_src;
+            wb_cond_br          <=  mem_cond_br;
+            wb_jump             <=  mem_jump;
+            //signals originated in EX:
+            wb_comp_true        <=  mem_comp_true;
+            wb_alu_out          <=  mem_alu_out;
+            //signals originated in MEM:
+            wb_mem_data_out     <=  mem_data_out;
+        end
     end
 end
 
@@ -247,7 +266,9 @@ ControlUnit control(
     .sign_format(sign_format),
     .alu_op(alu_op),
     .rs1_needed(rs1_needed),
-    .rs2_needed(rs2_needed)
+    .rs2_needed(rs2_needed),
+    .illegal_instruction(illegal_instruction),
+    .halt(trap)
 );
 
 RegFile regfile(
@@ -339,7 +360,7 @@ always@(*) begin
 end
 
 DataMemory data_mem(
-    .write_enable(mem_mem_write),
+    .write_enable(mem_mem_write && !halt),
     .read_enable(mem_mem_read), 
     .clk(clk),
     .address(mem_alu_out), 
@@ -355,6 +376,19 @@ always @(*) begin
         nextpc = {mem_alu_out[63:1],1'b0};
     else
         nextpc = pc_plus_4;
+end
+
+always @(posedge clk) begin
+    if(reset)
+        halt <= 1'b0;
+    else if(mem_trap)
+        halt <= 1'b1;
+end
+always @(posedge clk) begin
+    if(reset)
+        illegal <= 1'b0;
+    else if(mem_illegal_instruction)
+        illegal <= 1'b1;
 end
 
 //-----------------------------------------WB-----------------------------------------

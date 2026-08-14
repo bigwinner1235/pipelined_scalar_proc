@@ -10,16 +10,19 @@ module tb_top;
     .startpc(64'd0)
   );
 
-  // every test program ends with "jal x0, 0" (a self-loop). when that
-  // instruction reaches WB, every instruction before it has already
-  // written back and any store it made has already committed in MEM.
+  // a test program ends one of two ways:
+  //   - ecall/ebreak or an illegal instruction, which latches dut.halt in MEM
+  //   - "jal x0, 0" (a self-loop); done when that instruction reaches WB
+  // either way every earlier instruction has already written back and any
+  // store it made has already committed in MEM.
   localparam [31:0] HALT_INST = 32'h0000006f;
   localparam        MAX_CYCLES = 10000;
 
   reg [1023:0] testdir, path;
   integer fd, r, errors, cycles, i, budget;
+  integer exp_halt, exp_illegal;
   reg [63:0] addr, expect_val, actual;
-  reg halted;
+  reg halted, got_flags;
 
   // read 8 bytes little-endian out of the byte-addressed data memory
   function [63:0] read_dmem(input [63:0] a);
@@ -58,20 +61,21 @@ module tb_top;
       dut.data_mem.mem[i] = 8'h00;
     rst = 0;
 
-    // run until the halt instruction retires, or until we time out
+    // run until the core halts or the self-loop retires, or until we time out
     halted = 1'b0;
     for (cycles = 0; cycles < MAX_CYCLES && !halted; cycles = cycles + 1) begin
       @(negedge clk);
-      if (dut.wb_instruction === HALT_INST) halted = 1'b1;
+      if (dut.halt === 1'b1 || dut.wb_instruction === HALT_INST) halted = 1'b1;
     end
 
     if (!halted) begin
-      $display("  no halt (jal x0, 0) retired within %0d cycles", MAX_CYCLES);
+      $display("  core did not halt within %0d cycles", MAX_CYCLES);
       $display("TEST FAILED (timeout)");
       $finish;
     end
 
-    $display("  program finished in %0d cycles", cycles);
+    $display("  program finished in %0d cycles (halt=%b illegal=%b)",
+             cycles, dut.halt, dut.illegal);
 
     errors = 0;
     $sformat(path, "%0s/expected.txt", testdir);
@@ -94,6 +98,39 @@ module tb_top;
       end
     end
     $fclose(fd);
+
+    // trap flags: every test states what halt and illegal_instruction must be
+    // when the program stops, so a legal program is checked for staying quiet
+    // just as strictly as a trapping one is checked for firing.
+    $sformat(path, "%0s/flags.txt", testdir);
+    fd = $fopen(path, "r");
+    if (fd == 0) begin
+      $display("ERROR: cannot open %0s", path);
+      $finish;
+    end
+    got_flags = 1'b0;
+    exp_halt = 0;
+    exp_illegal = 0;
+    while (!$feof(fd) && !got_flags) begin
+      r = $fscanf(fd, " %d %d", exp_halt, exp_illegal);
+      if (r == 2) got_flags = 1'b1;
+      else        r = $fgets(path, fd);
+    end
+    $fclose(fd);
+
+    if (!got_flags) begin
+      $display("ERROR: %0s/flags.txt has no 'halt illegal' line", testdir);
+      $finish;
+    end
+
+    if ((dut.halt === 1'b1) !== (exp_halt != 0)) begin
+      $display("  halt = %b, expected %0d", dut.halt, exp_halt);
+      errors = errors + 1;
+    end
+    if ((dut.illegal === 1'b1) !== (exp_illegal != 0)) begin
+      $display("  illegal_instruction = %b, expected %0d", dut.illegal, exp_illegal);
+      errors = errors + 1;
+    end
 
     // optional cycle budget: perf regression tests fail if they get slower
     $sformat(path, "%0s/max_cycles.txt", testdir);

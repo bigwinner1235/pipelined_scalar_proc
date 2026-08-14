@@ -42,6 +42,10 @@ LOADS = {'lb':0,'lh':1,'lw':2,'ld':3,'lbu':4,'lhu':5,'lwu':6}
 STORES = {'sb':0,'sh':1,'sw':2,'sd':3}
 BRANCHES = {'beq':0,'bne':1,'blt':4,'bge':5,'bltu':6,'bgeu':7}
 
+# every opcode ControlUnit.v decodes. a .word whose opcode is outside this set
+# is guaranteed to fall into the decoder's default arm (illegal_instruction).
+KNOWN_OPCODES = {0x33,0x3B,0x13,0x1B,0x03,0x23,0x63,0x6F,0x67,0x37,0x17,0x73}
+
 def reg(t):
     assert t.startswith('x'), t
     n = int(t[1:]); assert 0 <= n < 32
@@ -90,6 +94,15 @@ def assemble(src):
             w = enc_j(0, 0)                       # jal x0, 0 (self-loop)
             asm = 'jal x0, 0'
             note = note or 'halt (self-loop)'
+        elif m == 'ecall':
+            w = 0x00000073
+        elif m == 'ebreak':
+            w = 0x00100073
+        elif m == '.word':                        # raw encoding, for illegal instructions
+            w = imm_val(toks[1], pc, False) & 0xFFFFFFFF
+            assert (w & 0x7F) not in KNOWN_OPCODES, \
+                f'.word 0x{w:08x} decodes to a known opcode, it is not illegal'
+            note = note or 'reserved opcode: illegal'
         elif m in R_OPS:
             op, f3, f7 = R_OPS[m]
             w = enc_r(op, f3, f7, reg(toks[1]), reg(toks[2]), reg(toks[3]))
@@ -125,6 +138,8 @@ def assemble(src):
 
 # ---------------------------------------------------------------- golden model
 def simulate(prog, labels):
+    """Returns (stores, halt, illegal): the final value of every stored address,
+    plus the expected end-of-run state of the core's halt / illegal flags."""
     def const(tok):
         try:
             return int(tok, 0)
@@ -136,6 +151,7 @@ def simulate(prog, labels):
     x = [0] * 32
     mem = {}
     stored = []          # ordered unique store addresses (all 8-aligned here)
+    halt = illegal = False
     pc, steps = 0, 0
     while steps < 100000:
         steps += 1
@@ -221,6 +237,12 @@ def simulate(prog, labels):
             rd = reg(toks[1])
             imm = sx((w >> 12) & 0xFFFFF, 20) << 12
             if rd: x[rd] = (imm if m == 'lui' else pc + imm) & M64
+        elif m in ('ecall', 'ebreak'):
+            halt = True                                   # architectural halt
+            break
+        elif m == '.word':
+            halt = illegal = True                         # illegal instruction traps
+            break
         else:
             raise ValueError(asm)
         pc = nxt
@@ -229,7 +251,7 @@ def simulate(prog, labels):
 
     def read64(a):
         return sum(mem.get(a + k, 0) << (8 * k) for k in range(8))
-    return [(a, read64(a)) for a in sorted(stored)]
+    return [(a, read64(a)) for a in sorted(stored)], halt, illegal
 
 def branch_off(w):
     return sx(((w >> 31) << 12) | (((w >> 7) & 1) << 11) |
@@ -239,11 +261,20 @@ def jal_off(w):
               (((w >> 20) & 1) << 11) | (((w >> 21) & 0x3FF) << 1), 21)
 
 # ---------------------------------------------------------------- output
-def emit(name, src, max_cycles=None):
+def emit(name, src, max_cycles=None, zero_addrs=()):
+    """zero_addrs: addresses the program must leave untouched. The golden model
+    only records addresses it actually stored to, so a store that wrongly
+    commits past a halt would otherwise go unchecked."""
     prog, labels = assemble(src)
-    expected = simulate(prog, labels)
+    expected, halt, illegal = simulate(prog, labels)
+    have = {a for a, _ in expected}
+    expected += [(a, 0) for a in zero_addrs if a not in have]
+    expected.sort()
     d = os.path.join(TESTS, name)
     os.makedirs(d)
+    with open(os.path.join(d, 'flags.txt'), 'w', newline='\n') as f:
+        f.write('# halt illegal\n')
+        f.write(f'{int(halt)} {int(illegal)}\n')
     if max_cycles is not None:
         with open(os.path.join(d, 'max_cycles.txt'), 'w', newline='\n') as f:
             f.write(f'{max_cycles}\n')
@@ -258,7 +289,8 @@ def emit(name, src, max_cycles=None):
         f.write('# addr             value\n')
         for a, v in expected:
             f.write(f'{a:016x}   {v:016x}\n')
-    print(f'{name}: {len(prog)} instructions, {len(expected)} checked addresses')
+    print(f'{name}: {len(prog)} instructions, {len(expected)} checked addresses, '
+          f'halt={int(halt)} illegal={int(illegal)}')
 
 def blk(*lines):
     return list(lines)
@@ -399,7 +431,9 @@ isa = blk(
     'addi x9, x0, 666   # skipped if jalr works',
     'T8: sd x9, 360(x0)',
     'sd x12, 368(x0)    # jalr link value',
-    'halt',
+    # end through the architectural halt, not a self-loop: the whole ISA sweep
+    # must leave illegal_instruction clear, and ecall must raise halt
+    'ecall',
 )
 
 hz_raw_ex = blk(
@@ -628,6 +662,55 @@ perf_loop8 = blk(
     'halt',
 )
 
+# traps. The three instructions after the trap are exactly the ones that reach
+# IF/ID/EX before the halt flag latches -- if the halt does not hold the
+# pipeline, one of their stores commits and the zero checks catch it.
+trap_ecall = blk(
+    'addi x1, x0, 0x55',
+    'addi x2, x0, 666   # poison',
+    'nop', 'nop', 'nop',
+    'sd x1, 64(x0)      # retires before the trap: must commit',
+    'ecall              # halt = 1, illegal = 0',
+    'sd x2, 64(x0)      # past the halt: must not commit',
+    'sd x2, 72(x0)      # past the halt: must not commit',
+    'sd x2, 80(x0)      # past the halt: must not commit',
+)
+
+trap_ebreak = blk(
+    'addi x1, x0, 0x55',
+    'addi x2, x0, 666   # poison',
+    'nop', 'nop', 'nop',
+    'sd x1, 64(x0)      # retires before the trap: must commit',
+    'ebreak             # halt = 1, illegal = 0',
+    'sd x2, 64(x0)      # past the halt: must not commit',
+    'sd x2, 72(x0)      # past the halt: must not commit',
+    'sd x2, 80(x0)      # past the halt: must not commit',
+)
+
+trap_illegal = blk(
+    'addi x1, x0, 0x55',
+    'addi x2, x0, 666   # poison',
+    'nop', 'nop', 'nop',
+    'sd x1, 64(x0)      # retires before the trap: must commit',
+    '.word 0x0000007f   # opcode 1111111 is reserved: halt = 1, illegal = 1',
+    'sd x2, 64(x0)      # past the halt: must not commit',
+    'sd x2, 72(x0)      # past the halt: must not commit',
+    'sd x2, 80(x0)      # past the halt: must not commit',
+)
+
+# an illegal instruction on a mispredicted path is never executed, so it must
+# not latch illegal_instruction: the flush has to kill the trap too
+trap_illegal_flushed = blk(
+    'addi x1, x0, 1',
+    'beq x0, x0, T      # always taken',
+    '.word 0x0000007f   # wrong path: flushed, must not raise illegal',
+    '.word 0x0000007f   # wrong path: flushed, must not raise illegal',
+    '.word 0x0000007f   # wrong path: flushed, must not raise illegal',
+    '.word 0x0000007f   # wrong path: flushed, must not raise illegal',
+    'T: sd x1, 64(x0)',
+    'ecall              # halt = 1, illegal = 0',
+)
+
 hz_x0 = blk(
     'addi x0, x0, 7     # write to x0 is discarded',
     'addi x1, x0, 0     # x0 must read 0: a naive forwarder would give 7',
@@ -662,3 +745,7 @@ if __name__ == '__main__':
     emit('hz_jal_flush', hz_jal_flush)
     emit('hz_jalr_flush', hz_jalr_flush)
     emit('hz_x0', hz_x0)
+    emit('trap_ecall', trap_ecall, zero_addrs=[72, 80])
+    emit('trap_ebreak', trap_ebreak, zero_addrs=[72, 80])
+    emit('trap_illegal', trap_illegal, zero_addrs=[72, 80])
+    emit('trap_illegal_flushed', trap_illegal_flushed)

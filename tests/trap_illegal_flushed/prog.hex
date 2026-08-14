@@ -1,0 +1,8 @@
+93 00 10 00  // addi x1, x0, 1
+63 0a 00 00  // beq x0, x0, T          -- always taken
+7f 00 00 00  // .word 0x0000007f       -- wrong path: flushed, must not raise illegal
+7f 00 00 00  // .word 0x0000007f       -- wrong path: flushed, must not raise illegal
+7f 00 00 00  // .word 0x0000007f       -- wrong path: flushed, must not raise illegal
+7f 00 00 00  // .word 0x0000007f       -- wrong path: flushed, must not raise illegal
+23 30 10 04  // sd x1, 64(x0)
+73 00 00 00  // ecall                  -- halt = 1, illegal = 0

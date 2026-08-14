@@ -1,0 +1,10 @@
+93 00 50 05  // addi x1, x0, 0x55
+13 01 a0 29  // addi x2, x0, 666       -- poison
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 10 04  // sd x1, 64(x0)          -- retires before the trap: must commit
+73 00 00 00  // ecall                  -- halt = 1, illegal = 0
+23 30 20 04  // sd x2, 64(x0)          -- past the halt: must not commit
+23 34 20 04  // sd x2, 72(x0)          -- past the halt: must not commit
+23 38 20 04  // sd x2, 80(x0)          -- past the halt: must not commit

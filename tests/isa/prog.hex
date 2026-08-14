@@ -149,4 +149,4 @@ bb 56 22 00  // srlw x13, x4, x2
 93 04 a0 29  // addi x9, x0, 666       -- skipped if jalr works
 23 34 90 16  // sd x9, 360(x0)
 23 38 c0 16  // sd x12, 368(x0)        -- jalr link value
-6f 00 00 00  // jal x0, 0              -- halt (self-loop)
+73 00 00 00  // ecall
