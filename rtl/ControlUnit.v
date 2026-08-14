@@ -242,6 +242,10 @@ always @(*) begin
             rs2_needed = 0;
             halt = 1;
         end
+        7'b000_1111: begin //FENCE (no op)
+            rs1_needed = 0;
+            rs2_needed = 0;
+        end
         default: begin
             illegal_instruction = 1;
             halt = 1;
