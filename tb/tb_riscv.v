@@ -35,9 +35,17 @@ module tb_riscv;
     end
 
     // clear, then load the image into instruction memory
+    // byte address i lives in bank i[1:0] at row i>>2
     for (i = 0; i < (1<<16); i = i + 1)
-      dut.imem.mem[i] = 8'h00;
-    $readmemh(hexfile, dut.imem.mem);
+      image[i] = 8'h00;
+    $readmemh(hexfile, image);
+    for (i = 0; i < (1<<16); i = i + 1)
+      case (i[1:0])
+        2'd0: dut.imem.mem0[i>>2] = image[i];
+        2'd1: dut.imem.mem1[i>>2] = image[i];
+        2'd2: dut.imem.mem2[i>>2] = image[i];
+        2'd3: dut.imem.mem3[i>>2] = image[i];
+      endcase
 
     if ($test$plusargs("vcd")) begin
       $dumpfile("dump.vcd");

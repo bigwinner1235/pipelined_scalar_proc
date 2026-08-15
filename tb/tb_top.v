@@ -24,6 +24,10 @@ module tb_top;
   reg [63:0] addr, expect_val, actual;
   reg halted, got_flags;
 
+  // staging array: $readmemh can only fill one flat array, so the image is
+  // loaded here first and then striped across the banked memories
+  reg [7:0] image [(1<<16)-1:0];
+
   // data memory is banked: byte address a lives in bank a[2:0] at row a>>3
   function [7:0] read_byte(input [63:0] a);
     begin
@@ -57,11 +61,19 @@ module tb_top;
     end
 
     // clear instruction memory so unfilled words read as 0, not X
+    // byte address i lives in bank i[1:0] at row i>>2
     for (i = 0; i < (1<<16); i = i + 1)
-      dut.imem.mem[i] = 8'h00;
+      image[i] = 8'h00;
 
     $sformat(path, "%0s/prog.hex", testdir);
-    $readmemh(path, dut.imem.mem);
+    $readmemh(path, image);
+    for (i = 0; i < (1<<16); i = i + 1)
+      case (i[1:0])
+        2'd0: dut.imem.mem0[i>>2] = image[i];
+        2'd1: dut.imem.mem1[i>>2] = image[i];
+        2'd2: dut.imem.mem2[i>>2] = image[i];
+        2'd3: dut.imem.mem3[i>>2] = image[i];
+      endcase
 
     if ($test$plusargs("vcd")) begin
       $dumpfile("dump.vcd");
