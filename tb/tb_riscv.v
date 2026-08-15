@@ -24,6 +24,10 @@ module tb_riscv;
   reg halted;
   reg [63:0] gp;
 
+  // staging array: $readmemh can only fill one flat array, so the image is
+  // loaded here first and then striped across the 8 dmem byte banks
+  reg [7:0] image [(1<<16)-1:0];
+
   initial begin
     if (!$value$plusargs("hex=%s", hexfile)) begin
       $display("ERROR: no +hex given");
@@ -45,9 +49,21 @@ module tb_riscv;
     @(negedge clk);
     // load data memory here, not at time 0: the core executes instruction 0
     // repeatedly while reset is held, so any stores it does must be wiped.
+    // byte address i lives in bank i[2:0] at row i>>3
     for (i = 0; i < (1<<16); i = i + 1)
-      dut.data_mem.mem[i] = 8'h00;
-    $readmemh(hexfile, dut.data_mem.mem);
+      image[i] = 8'h00;
+    $readmemh(hexfile, image);
+    for (i = 0; i < (1<<16); i = i + 1)
+      case (i[2:0])
+        3'd0: dut.data_mem.mem0[i>>3] = image[i];
+        3'd1: dut.data_mem.mem1[i>>3] = image[i];
+        3'd2: dut.data_mem.mem2[i>>3] = image[i];
+        3'd3: dut.data_mem.mem3[i>>3] = image[i];
+        3'd4: dut.data_mem.mem4[i>>3] = image[i];
+        3'd5: dut.data_mem.mem5[i>>3] = image[i];
+        3'd6: dut.data_mem.mem6[i>>3] = image[i];
+        3'd7: dut.data_mem.mem7[i>>3] = image[i];
+      endcase
     rst = 0;
 
     // run until the core halts (ecall from RVTEST_PASS/FAIL), or time out

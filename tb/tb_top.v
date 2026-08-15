@@ -24,13 +24,29 @@ module tb_top;
   reg [63:0] addr, expect_val, actual;
   reg halted, got_flags;
 
+  // data memory is banked: byte address a lives in bank a[2:0] at row a>>3
+  function [7:0] read_byte(input [63:0] a);
+    begin
+      case (a[2:0])
+        3'd0: read_byte = dut.data_mem.mem0[a[15:3]];
+        3'd1: read_byte = dut.data_mem.mem1[a[15:3]];
+        3'd2: read_byte = dut.data_mem.mem2[a[15:3]];
+        3'd3: read_byte = dut.data_mem.mem3[a[15:3]];
+        3'd4: read_byte = dut.data_mem.mem4[a[15:3]];
+        3'd5: read_byte = dut.data_mem.mem5[a[15:3]];
+        3'd6: read_byte = dut.data_mem.mem6[a[15:3]];
+        3'd7: read_byte = dut.data_mem.mem7[a[15:3]];
+      endcase
+    end
+  endfunction
+
   // read 8 bytes little-endian out of the byte-addressed data memory
   function [63:0] read_dmem(input [63:0] a);
     integer k;
     begin
       read_dmem = 64'd0;
       for (k = 0; k < 8; k = k + 1)
-        read_dmem[8*k +: 8] = dut.data_mem.mem[a + k];
+        read_dmem[8*k +: 8] = read_byte(a + k);
     end
   endfunction
 
@@ -57,8 +73,16 @@ module tb_top;
     @(negedge clk);
     // clear data memory here, not at time 0: the core executes instruction 0
     // repeatedly while reset is held, so any stores it does must be wiped.
-    for (i = 0; i < (1<<16); i = i + 1)
-      dut.data_mem.mem[i] = 8'h00;
+    for (i = 0; i < (1<<13); i = i + 1) begin
+      dut.data_mem.mem0[i] = 8'h00;
+      dut.data_mem.mem1[i] = 8'h00;
+      dut.data_mem.mem2[i] = 8'h00;
+      dut.data_mem.mem3[i] = 8'h00;
+      dut.data_mem.mem4[i] = 8'h00;
+      dut.data_mem.mem5[i] = 8'h00;
+      dut.data_mem.mem6[i] = 8'h00;
+      dut.data_mem.mem7[i] = 8'h00;
+    end
     rst = 0;
 
     // run until the core halts or the self-loop retires, or until we time out
