@@ -396,7 +396,7 @@ always @(posedge clk) begin
 end
 
 //-----------------------------------------WB-----------------------------------------
-assign from_post_mem_mux = (wb_reg_write_src)? wb_mem_data_out : wb_alu_out;
+assign from_post_mem_mux = (wb_reg_write_src)? mem_data_out : wb_alu_out;
 assign reg_w_bus = (wb_jump)? (wb_currentpc + 64'd4) : from_post_mem_mux;
 
 endmodule

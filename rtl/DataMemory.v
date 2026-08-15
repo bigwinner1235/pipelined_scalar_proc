@@ -10,14 +10,14 @@ wire [1:0] size = funct3[1:0];
 wire not_signed = funct3[2];
 wire [63:0] raw = {mem[adjusted_address+7], mem[adjusted_address+6], mem[adjusted_address+5], mem[adjusted_address+4],
                    mem[adjusted_address+3], mem[adjusted_address+2], mem[adjusted_address+1], mem[adjusted_address+0]};
-always @(*) begin
+always @(posedge clk) begin
     if(read_enable) begin
         case(size)
-            2'd0: data_out = not_signed? {56'd0,raw[7:0]} : {{56{raw[7]}},raw[7:0]};
-            2'd1: data_out = not_signed? {48'd0,raw[15:0]} : {{48{raw[15]}},raw[15:0]};
-            2'd2: data_out = not_signed? {32'd0,raw[31:0]} : {{32{raw[31]}},raw[31:0]};
-            2'd3: data_out = raw;
-            default: data_out = 64'd0;
+            2'd0: data_out <= not_signed? {56'd0,raw[7:0]} : {{56{raw[7]}},raw[7:0]};
+            2'd1: data_out <= not_signed? {48'd0,raw[15:0]} : {{48{raw[15]}},raw[15:0]};
+            2'd2: data_out <= not_signed? {32'd0,raw[31:0]} : {{32{raw[31]}},raw[31:0]};
+            2'd3: data_out <= raw;
+            default: data_out <= 64'd0;
         endcase
     end
     else data_out = 64'd0;
