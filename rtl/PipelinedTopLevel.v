@@ -6,7 +6,6 @@ module PipelinedTopLevel (
 //----------------------------------------------------------------------------------IF signals
 reg  [63:0] currentpc;
 wire [63:0] pc_plus_4; //pc + 4 for the youngest instruction
-wire [31:0] instruction;
 
 //----------------------------------------------------------------------------------ID signals
 wire        reg_write;
@@ -54,7 +53,8 @@ reg         illegal; //flag illegal instructions
 
 //----------------------------------------------------------------------------------from IF to ID
 reg  [63:0]  id_currentpc;
-reg  [31:0]  id_instruction;
+wire [31:0]  id_instruction;
+reg          flushed_in_if; //to make flushes work properly
 
 //----------------------------------------------------------------------------------from ID to EX
 reg  [63:0] ex_currentpc;
@@ -111,11 +111,13 @@ always @ (posedge clk) begin
     if ((!freeze && !halt) || reset) begin
         if(reset || flush) begin
             id_currentpc    <=   64'd0;
-            id_instruction  <=   32'h00000013; 
+        end
+        if(flush) begin
+            flushed_in_if    <=   1'b1;
         end
         else begin
-            id_currentpc    <=   currentpc;
-            id_instruction  <=   instruction;       
+            id_currentpc    <=   currentpc;   
+            flushed_in_if    <=   1'b0;
         end
     end
 end
@@ -123,7 +125,7 @@ end
 //signals from ID:
 always @ (posedge clk) begin
     if ((!freeze && !halt) || reset) begin
-        if(reset || flush)begin
+        if(reset || flush || flushed_in_if)begin
             //control signals:
             ex_reg_write        <=  1'b0;
             ex_mem_write        <=  1'b0; 
@@ -243,8 +245,10 @@ always @(posedge clk) begin
 end    
 
 InstructionMemory imem(
+    .enable(!freeze && !halt),
+    .clk(clk),
     .address(currentpc),
-    .inst(instruction)
+    .inst(id_instruction)
 );
 
 assign pc_plus_4 = currentpc + 64'd4;
