@@ -102,7 +102,6 @@ reg         wb_cond_br;
 reg         wb_jump;
 reg         wb_comp_true;
 reg  [63:0] wb_alu_out;
-reg  [63:0] wb_mem_data_out;
 reg         wb_redirect;
 
 //----------------------------------------------------------------------------------plumbing:
@@ -228,8 +227,6 @@ always @ (posedge clk) begin
             //signals originated in EX:
             wb_comp_true        <=  mem_comp_true;
             wb_alu_out          <=  mem_alu_out;
-            //signals originated in MEM:
-            wb_mem_data_out     <=  mem_data_out;
         end
     end
 end
