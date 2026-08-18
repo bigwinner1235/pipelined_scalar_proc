@@ -1,7 +1,14 @@
 module PipelinedTopLevel (
-    input           reset,  //Active High
-	input [63:0]    startpc,
-    input           clk
+    input               reset,  //Active High
+	input [63:0]        startpc,
+    input               clk,
+    output reg          halt, //for ecall/ebreak
+    output reg          illegal, //flag illegal instructions
+    //see what has been written:
+    output          data_mem_write_enable,
+    output [63:0]   data_mem_address,
+    output [63:0]   data_mem_data_in,
+    output [2:0]    data_mem_funct3
 );
 //----------------------------------------------------------------------------------IF signals
 reg  [63:0] currentpc;
@@ -48,8 +55,7 @@ wire [63:0] from_post_mem_mux;
 wire [63:0] reg_w_bus;
 reg  [63:0] nextpc;
 reg         freeze; // for a load-use dependency
-reg         halt; //for ecall/ebreak
-reg         illegal; //flag illegal instructions
+
 
 //----------------------------------------------------------------------------------from IF to ID
 reg  [63:0]  id_currentpc;
@@ -360,13 +366,19 @@ always@(*) begin
         mem_data_in = mem_b;
 end
 
+//clean things up:
+assign data_mem_write_enable = mem_mem_write && !halt;
+assign data_mem_address = mem_alu_out;
+assign data_mem_data_in = mem_data_in;
+assign data_mem_funct3 = mem_instruction[14:12];
+
 DataMemory data_mem(
-    .write_enable(mem_mem_write && !halt),
+    .write_enable(data_mem_write_enable), 
     .read_enable(mem_mem_read), 
     .clk(clk),
-    .address(mem_alu_out), 
-    .data_in(mem_data_in),
-    .funct3(mem_instruction[14:12]),
+    .address(data_mem_address), 
+    .data_in(data_mem_data_in), 
+    .funct3(data_mem_funct3), 
     .data_out(mem_data_out)
 );
 
