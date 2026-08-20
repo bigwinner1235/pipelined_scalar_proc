@@ -4,6 +4,7 @@ module InstructionMemory #(parameter ADDR_BITS = 16) (
     input  [63:0] address,
     output reg [31:0] inst
 );
+
 reg [7:0] mem0 [(1 << (ADDR_BITS - 2)) - 1 : 0];
 reg [7:0] mem1 [(1 << (ADDR_BITS - 2)) - 1 : 0];
 reg [7:0] mem2 [(1 << (ADDR_BITS - 2)) - 1 : 0];
@@ -26,4 +27,14 @@ always @(posedge clk) begin
                 inst <= 32'h00000013; // NOP
             end
 end
+
+
+`ifndef SIMULATION
+initial begin
+    $readmemh("imem0.hex", mem0);
+    $readmemh("imem1.hex", mem1);
+    $readmemh("imem2.hex", mem2);
+    $readmemh("imem3.hex", mem3);
+end
+`endif
 endmodule
