@@ -5,10 +5,10 @@ module InstructionMemory #(parameter ADDR_BITS = 16) (
     output reg [31:0] inst
 );
 
-reg [7:0] mem0 [(1 << (ADDR_BITS - 2)) - 1 : 0];
-reg [7:0] mem1 [(1 << (ADDR_BITS - 2)) - 1 : 0];
-reg [7:0] mem2 [(1 << (ADDR_BITS - 2)) - 1 : 0];
-reg [7:0] mem3 [(1 << (ADDR_BITS - 2)) - 1 : 0];
+(* rom_style = "block" *) reg [7:0] mem0 [(1 << (ADDR_BITS - 2)) - 1 : 0];
+(* rom_style = "block" *) reg [7:0] mem1 [(1 << (ADDR_BITS - 2)) - 1 : 0];
+(* rom_style = "block" *) reg [7:0] mem2 [(1 << (ADDR_BITS - 2)) - 1 : 0];
+(* rom_style = "block" *) reg [7:0] mem3 [(1 << (ADDR_BITS - 2)) - 1 : 0];
 
 wire [ADDR_BITS-1:0] a = address[ADDR_BITS-1:0];
 wire [ADDR_BITS-1:2] row = a[ADDR_BITS-1:2];
