@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Force -Path build\riscv | Out-Null
 
 # compile the simulator once
 $rtl = (Get-ChildItem rtl\*.v).FullName
-& iverilog -g2005 -o build\riscv\sim tb\tb_riscv.v @rtl
+& iverilog -g2005 -DSIMULATION -o build\riscv\sim tb\tb_riscv.v @rtl
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 # fence_i: self-modifying code, impossible on split imem/dmem by construction

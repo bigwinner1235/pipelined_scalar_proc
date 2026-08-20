@@ -778,6 +778,22 @@ hz_x0 = blk(
     'halt',
 )
 
+# Two adds advance two Fibonacci steps with no register moves: starting from
+# a = F(2k), b = F(2k+1), "a += b" makes a = F(2k+2) and then "b += a" makes
+# b = F(2k+3). 8 iterations therefore leave a = F(16) = 987.
+fib16 = blk(
+    'addi x1, x0, 0     # a = F(0)',
+    'addi x2, x0, 1     # b = F(1)',
+    'addi x4, x0, 8     # each iteration advances two Fibonacci steps',
+    'lui x5, 1          # x5 = 0x1000, the result address',
+    'L: add x1, x1, x2  # a += b',
+    'add x2, x2, x1     # b += a',
+    'addi x4, x4, -1',
+    'bne x4, x0, L',
+    'sd x1, 0(x5)       # store F(16) = 987 = 0x3db to 0x1000',
+    'halt',
+)
+
 if __name__ == '__main__':
     # gen_tests.py --split <image.hex> [outdir]
     # de-interleave an image this script did not assemble, so the programs
@@ -819,3 +835,4 @@ if __name__ == '__main__':
     emit('trap_ebreak', trap_ebreak, zero_addrs=[72, 80])
     emit('trap_illegal', trap_illegal, zero_addrs=[72, 80])
     emit('trap_illegal_flushed', trap_illegal_flushed)
+    emit('fib16', fib16)

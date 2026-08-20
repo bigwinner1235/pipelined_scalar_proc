@@ -1,7 +1,7 @@
 #Claude wrote this
 New-Item -ItemType Directory -Force -Path build | Out-Null
 $rtl = (Get-ChildItem rtl\*.v).FullName
-& iverilog -g2005 -o build\sim tb\tb_top.v @rtl
+& iverilog -g2005 -DSIMULATION -o build\sim tb\tb_top.v @rtl
 if ($LASTEXITCODE -ne 0) { exit 1 }
 
 $pass = 0; $fail = 0

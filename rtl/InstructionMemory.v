@@ -31,10 +31,10 @@ end
 
 `ifndef SIMULATION
 initial begin
-    $readmemh("imem0.hex", mem0);
-    $readmemh("imem1.hex", mem1);
-    $readmemh("imem2.hex", mem2);
-    $readmemh("imem3.hex", mem3);
+    $readmemh("C:/Users/Jack R/Documents/pipelined_scalar_proc/pipelined_scalar_proc/tests/fib16/imem0.hex", mem0);
+    $readmemh("C:/Users/Jack R/Documents/pipelined_scalar_proc/pipelined_scalar_proc/tests/fib16/imem1.hex", mem1);
+    $readmemh("C:/Users/Jack R/Documents/pipelined_scalar_proc/pipelined_scalar_proc/tests/fib16/imem2.hex", mem2);
+    $readmemh("C:/Users/Jack R/Documents/pipelined_scalar_proc/pipelined_scalar_proc/tests/fib16/imem3.hex", mem3);
 end
 `endif
 endmodule

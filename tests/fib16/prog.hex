@@ -1,0 +1,10 @@
+93 00 00 00  // addi x1, x0, 0         -- a = F(0)
+13 01 10 00  // addi x2, x0, 1         -- b = F(1)
+13 02 80 00  // addi x4, x0, 8         -- each iteration advances two Fibonacci steps
+b7 12 00 00  // lui x5, 1              -- x5 = 0x1000, the result address
+b3 80 20 00  // add x1, x1, x2         -- a += b
+33 01 11 00  // add x2, x2, x1         -- b += a
+13 02 f2 ff  // addi x4, x4, -1
+e3 1a 02 fe  // bne x4, x0, L
+23 b0 12 00  // sd x1, 0(x5)           -- store F(16) = 987 = 0x3db to 0x1000
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)
