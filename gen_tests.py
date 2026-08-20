@@ -2,8 +2,10 @@
 #!/usr/bin/env python3
 """Generate the test suite: assembles each program, runs it through a
 sequential RV64I golden model, and writes prog.hex (commented) +
-expected.txt (final value of every stored address)."""
-import os, shutil
+expected.txt (final value of every stored address), plus imem0-3.hex, the
+same program de-interleaved across InstructionMemory's four byte banks so
+an FPGA build can initialize them with $readmemh."""
+import os, shutil, sys
 
 REPO = os.path.dirname(os.path.abspath(__file__))
 TESTS = os.path.join(REPO, "tests")
@@ -260,6 +262,60 @@ def jal_off(w):
     return sx(((w >> 31) << 20) | (((w >> 12) & 0xFF) << 12) |
               (((w >> 20) & 1) << 11) | (((w >> 21) & 0x3FF) << 1), 21)
 
+# ---------------------------------------------------------------- bank images
+# On an FPGA there is no testbench to poke memory: every bank of
+# InstructionMemory has to come up already initialized, which means a
+# $readmemh in an initial block inside the module. $readmemh fills one flat
+# array and imem is 4 byte-wide banks -- byte i lives in bank i & 3 at row
+# i >> 2 -- so the flat image has to be de-interleaved into one file per bank.
+IMEM_BANKS = 4
+
+def flat_image(prog):
+    """The assembled program as a flat little-endian byte image based at 0."""
+    return b''.join(w.to_bytes(4, 'little') for w, _, _, _ in prog)
+
+def split_banks(image, nbanks):
+    """Returns nbanks byte strings; bank k holds every byte whose address is
+    k mod nbanks, in row order, which is what memN[row] expects. The image is
+    padded up so every bank ends on the same row."""
+    if len(image) % nbanks:
+        image += bytes(nbanks - len(image) % nbanks)
+    return [image[k::nbanks] for k in range(nbanks)]
+
+def write_banks(outdir, prefix, image, nbanks):
+    """One $readmemh file per bank, one byte per line. The files are only as
+    long as the program; the remaining BRAM rows come up as 0, matching the
+    testbench, which zeroes every byte it does not fill."""
+    banks = split_banks(image, nbanks)
+    # a transposed bank file is a board that fetches garbage and a simulation
+    # that notices nothing, so check the split re-interleaves to what went in
+    assert bytes(b for row in zip(*banks) for b in row)[:len(image)] == image
+    for k, bank in enumerate(banks):
+        with open(os.path.join(outdir, f'{prefix}{k}.hex'), 'w', newline='\n') as f:
+            f.write(''.join(f'{b:02x}\n' for b in bank))
+    return len(banks[0])
+
+def read_flat_hex(path):
+    """Parse a $readmemh image back into flat bytes. Handles both formats in
+    this repo: the commented 4-bytes-per-line prog.hex written below, and
+    objcopy -O verilog output, which places blocks with '@ADDR' records and
+    may leave gaps between them."""
+    image, addr = bytearray(), 0
+    with open(path) as f:
+        for line in f:
+            for tok in line.split('//')[0].split():
+                if tok.startswith('@'):
+                    addr = int(tok[1:], 16)
+                    continue
+                if len(image) < addr:
+                    image.extend(bytes(addr - len(image)))
+                if addr < len(image):
+                    image[addr] = int(tok, 16)
+                else:
+                    image.append(int(tok, 16))
+                addr += 1
+    return bytes(image)
+
 # ---------------------------------------------------------------- output
 def emit(name, src, max_cycles=None, zero_addrs=()):
     """zero_addrs: addresses the program must leave untouched. The golden model
@@ -285,6 +341,9 @@ def emit(name, src, max_cycles=None, zero_addrs=()):
             if note:
                 line = f'{bs}  // {asm:<22} -- {note}'
             f.write(line + '\n')
+    # the same image split for FPGA BRAM init. Simulation ignores these:
+    # the testbench stripes prog.hex across the banks itself.
+    write_banks(d, 'imem', flat_image(prog), IMEM_BANKS)
     with open(os.path.join(d, 'expected.txt'), 'w', newline='\n') as f:
         f.write('# addr             value\n')
         for a, v in expected:
@@ -720,6 +779,17 @@ hz_x0 = blk(
 )
 
 if __name__ == '__main__':
+    # gen_tests.py --split <image.hex> [outdir]
+    # de-interleave an image this script did not assemble, so the programs
+    # the riscv-tests flow builds with objcopy can be put on the FPGA too
+    if len(sys.argv) > 1 and sys.argv[1] == '--split':
+        src = sys.argv[2]
+        outdir = sys.argv[3] if len(sys.argv) > 3 else os.path.dirname(os.path.abspath(src))
+        stem = os.path.splitext(os.path.basename(src))[0]
+        rows = write_banks(outdir, f'{stem}_imem', read_flat_hex(src), IMEM_BANKS)
+        print(f'{src}: {IMEM_BANKS} bank files of {rows} rows in {outdir}')
+        sys.exit(0)
+
     if os.path.isdir(TESTS):
         shutil.rmtree(TESTS)
     os.makedirs(TESTS)
