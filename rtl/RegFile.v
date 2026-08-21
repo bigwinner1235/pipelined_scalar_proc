@@ -11,7 +11,7 @@ reg [63:0] regs [31:1];
 assign a = (rs1 == 5'd0) ? 64'd0 : regs[rs1];
 assign b = (rs2 == 5'd0) ? 64'd0 : regs[rs2];
 
-always @ (negedge clk) //write at negedge to make raw dependencies easy to deal with (written value can make it into ID/EX pipeline reg)
+always @ (posedge clk) //retire stage forwarding allows posedge write
 begin
     //write if enabled and target not XZR
     if (write_enable && !(rd == 5'd0))
