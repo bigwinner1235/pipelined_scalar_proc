@@ -1,0 +1,18 @@
+93 00 50 01  // addi x1, x0, 21
+13 01 20 02  // addi x2, x0, 34
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 30 10 04  // sd x1, 64(x0)
+23 34 20 04  // sd x2, 72(x0)
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+83 31 00 04  // ld x3, 64(x0)
+03 32 80 04  // ld x4, 72(x0)
+b3 82 41 00  // add x5, x3, x4         -- both operands from back-to-back loads: x3 must survive x4 retiring behind it
+13 00 00 00  // nop
+13 00 00 00  // nop
+13 00 00 00  // nop
+23 38 50 04  // sd x5, 80(x0)
+6f 00 00 00  // jal x0, 0              -- halt (self-loop)

@@ -110,6 +110,11 @@ reg         wb_comp_true;
 reg  [63:0] wb_alu_out;
 reg         wb_redirect;
 
+//----------------------------------------------------------------------------------from WB to ret
+reg  [63:0] ret_reg_w_bus;
+reg  [31:0] ret_instruction;
+reg         ret_reg_write;
+
 //----------------------------------------------------------------------------------plumbing:
 //signals from IF:
 always @ (posedge clk) begin
@@ -172,6 +177,11 @@ always @ (posedge clk) begin
             ex_illegal_instruction <= illegal_instruction;
             ex_trap             <=  trap;
         end
+    end
+    else if(freeze && !halt) begin
+    //update forwarding to prevent data falling out of the pipeline
+    ex_a                <=  post_alu_forwarding_a;
+    ex_b                <=  post_alu_forwarding_b;
     end
 end
 
@@ -237,6 +247,21 @@ always @ (posedge clk) begin
     end
 end
 
+//signals from wb: (to decrease critical path on load-use-branch)
+always @ (posedge clk) begin
+    if (!halt || reset) begin
+        if(reset)begin
+            ret_reg_w_bus       <=  64'd0; 
+            ret_instruction     <=  32'd0;
+            ret_reg_write       <=  1'b0;
+        end
+        else begin
+            ret_reg_w_bus       <=  reg_w_bus;
+            ret_instruction     <=  wb_instruction;
+            ret_reg_write       <=  wb_reg_write;
+        end
+    end
+end
 //-----------------------------------------IF-----------------------------------------
 always @(posedge clk) begin
     if(!freeze || reset) begin
@@ -307,9 +332,12 @@ always@(*) begin
             if((ex_instruction[19:15] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && !mem_reg_write_src) begin
                 post_alu_forwarding_a = mem_alu_out;
             end
-            //forward anything from wb
-            else if((ex_instruction[19:15] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write) begin
-                post_alu_forwarding_a = reg_w_bus;
+            //forward from mem/wb if not load-branch
+            else if((ex_instruction[19:15] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write && !wb_reg_write_src) begin
+                post_alu_forwarding_a = wb_alu_out;
+            end
+            else if((ex_instruction[19:15] == ret_instruction[11:7]) && (ret_instruction[11:7] != 5'd0) && ret_reg_write) begin
+                post_alu_forwarding_a = ret_reg_w_bus;
             end
             else 
                 post_alu_forwarding_a = ex_a;
@@ -319,9 +347,12 @@ always@(*) begin
             if((ex_instruction[24:20] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && !mem_reg_write_src) begin
                 post_alu_forwarding_b = mem_alu_out;
             end
-            //forward anything from mem/wb pipeline reg
-            else if((ex_instruction[24:20] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write) begin
-                post_alu_forwarding_b = reg_w_bus;
+            //forward from mem/wb if not load-branch
+            else if((ex_instruction[24:20] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write && !wb_reg_write_src) begin
+                post_alu_forwarding_b = wb_alu_out;
+            end
+            else if((ex_instruction[24:20] == ret_instruction[11:7]) && (ret_instruction[11:7] != 5'd0) && ret_reg_write) begin
+                post_alu_forwarding_b = ret_reg_w_bus;
             end
             else 
                 post_alu_forwarding_b = ex_b;
@@ -333,6 +364,13 @@ always@(*) begin
         freeze = 1'b1;
     end
     else if ((ex_instruction[24:20] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && mem_reg_write_src && !ex_mem_write && ex_rs2_needed) begin
+        freeze = 1'b1;
+    end
+    //freeze for load-use-branch to lower critical path
+    else if ((ex_instruction[19:15] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write && wb_reg_write_src && ex_rs1_needed) begin
+        freeze = 1'b1;
+    end
+    else if ((ex_instruction[24:20] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write && wb_reg_write_src && ex_rs2_needed) begin
         freeze = 1'b1;
     end
     else

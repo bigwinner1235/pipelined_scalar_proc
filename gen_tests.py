@@ -623,6 +623,21 @@ hz_load_jalr = blk(
     'halt',
 )
 
+hz_load_load = blk(
+    'addi x1, x0, 21',
+    'addi x2, x0, 34',
+    'nop', 'nop', 'nop',
+    'sd x1, 64(x0)',
+    'sd x2, 72(x0)',
+    'nop', 'nop', 'nop',
+    'ld x3, 64(x0)',
+    'ld x4, 72(x0)',
+    'add x5, x3, x4     # both operands from back-to-back loads: x3 must survive x4 retiring behind it',
+    'nop', 'nop', 'nop',
+    'sd x5, 80(x0)',
+    'halt',
+)
+
 hz_branch_next = blk(
     'addi x1, x0, 5',
     'nop', 'nop', 'nop',
@@ -819,6 +834,7 @@ if __name__ == '__main__':
     emit('hz_load_store', hz_load_store)
     emit('hz_load_branch', hz_load_branch)
     emit('hz_load_jalr', hz_load_jalr)
+    emit('hz_load_load', hz_load_load)
     emit('hz_branch_next', hz_branch_next)
     emit('hz_needed_stage', hz_needed_stage)
     emit('hz_jalnext_0', hz_jalnext_0)
