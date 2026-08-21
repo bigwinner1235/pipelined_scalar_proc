@@ -4,7 +4,7 @@ module PipelinedTopLevel (
     input               clk,
     output reg          halt, //for ecall/ebreak
     output reg          illegal, //flag illegal instructions
-    //see what has been written:
+    //see what has been written (handled by wrapper):
     output          data_mem_write_enable,
     output [63:0]   data_mem_address,
     output [63:0]   data_mem_data_in,
@@ -247,7 +247,7 @@ always @ (posedge clk) begin
     end
 end
 
-//signals from wb: (to decrease critical path on load-use-branch)
+//signals from wb: (to decrease critical path on load-use)
 always @ (posedge clk) begin
     if (!halt || reset) begin
         if(reset)begin
@@ -332,10 +332,11 @@ always@(*) begin
             if((ex_instruction[19:15] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && !mem_reg_write_src) begin
                 post_alu_forwarding_a = mem_alu_out;
             end
-            //forward from mem/wb if not load-branch
+            //forward from mem/wb if not load-use
             else if((ex_instruction[19:15] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write && !wb_reg_write_src) begin
                 post_alu_forwarding_a = wb_alu_out;
             end
+            //forward from ret
             else if((ex_instruction[19:15] == ret_instruction[11:7]) && (ret_instruction[11:7] != 5'd0) && ret_reg_write) begin
                 post_alu_forwarding_a = ret_reg_w_bus;
             end
@@ -347,10 +348,11 @@ always@(*) begin
             if((ex_instruction[24:20] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && !mem_reg_write_src) begin
                 post_alu_forwarding_b = mem_alu_out;
             end
-            //forward from mem/wb if not load-branch
+            //forward from mem/wb if not load-use
             else if((ex_instruction[24:20] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write && !wb_reg_write_src) begin
                 post_alu_forwarding_b = wb_alu_out;
             end
+            //forward from ret
             else if((ex_instruction[24:20] == ret_instruction[11:7]) && (ret_instruction[11:7] != 5'd0) && ret_reg_write) begin
                 post_alu_forwarding_b = ret_reg_w_bus;
             end
@@ -366,7 +368,7 @@ always@(*) begin
     else if ((ex_instruction[24:20] == mem_instruction[11:7]) && (mem_instruction[11:7] != 5'd0) && mem_reg_write && mem_reg_write_src && !ex_mem_write && ex_rs2_needed) begin
         freeze = 1'b1;
     end
-    //freeze for load-use-branch to lower critical path
+    //freeze for load-use to reduce critical path
     else if ((ex_instruction[19:15] == wb_instruction[11:7]) && (wb_instruction[11:7] != 5'd0) && wb_reg_write && wb_reg_write_src && ex_rs1_needed) begin
         freeze = 1'b1;
     end

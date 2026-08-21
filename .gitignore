@@ -1,3 +1,4 @@
 build/
 *.vcd
 external/
+__pycache__/

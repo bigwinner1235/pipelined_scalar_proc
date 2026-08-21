@@ -4,6 +4,18 @@ module DataMemory #(parameter ADDR_BITS = 16)(
     input [2:0] funct3,
     output reg [63:0] data_out
 );
+/*
+2^ADDR_BITS bytes of synchronous memory.
+The memory is organized into 8 banks, each bank is 1 byte wide, and the banks are interleaved across memory 
+i.e. the nth bank stores bytes n, n+8, n+16, etc. This means that accesses to certain bytes are restricted 
+in the size they can be to avoid misaligned accesses. Ex.
+    8-bit accesses can be made to any byte
+    16-bit accesses can be made to bytes in bank 0,1,2,3,4,5,6
+    32-bit accesses can be made to bytes in bank 0,1,2,3,4
+    64-bit accesses can only be made to bytes in bank 0
+*/
+
+
 (* ram_style = "block" *) reg [7:0] mem0 [(1 << (ADDR_BITS - 3)) - 1:0];
 (* ram_style = "block" *) reg [7:0] mem1 [(1 << (ADDR_BITS - 3)) - 1:0];
 (* ram_style = "block" *) reg [7:0] mem2 [(1 << (ADDR_BITS - 3)) - 1:0];
@@ -18,9 +30,10 @@ wire [ADDR_BITS - 1:3] row = adjusted_address[ADDR_BITS - 1:3];
 wire [1:0] size = funct3[1:0];
 wire not_signed = funct3[2];
 
+//reads implemented as load an entire row, then select appropriate bytes.
+//this requires latching the appropriate signals:
 reg sustained_read_enable, sustained_not_signed;
 reg [2:0] sustained_size, sustained_offset;
-
 always @(posedge clk) begin
     sustained_read_enable <= read_enable;
     sustained_not_signed <= not_signed;
@@ -28,9 +41,13 @@ always @(posedge clk) begin
     sustained_offset <= adjusted_address[2:0];
 end
 
+
+
 reg [63:0] raw;
 reg [7:0] wen; //write enable for each bank
 reg [7:0] data0, data1, data2, data3, data4, data5, data6, data7;
+
+//enable gated read/write mechanism
 always @ (posedge clk) begin
     if(wen[0]) begin
         mem0[row] <= data0;
@@ -62,6 +79,7 @@ always @ (posedge clk) begin
     end
 end
 
+// write bank routing logic
 always @(*) begin
     wen = 8'b0;
     {data7, data6, data5, data4, data3, data2, data1, data0} = 64'd0;
@@ -187,6 +205,8 @@ always @(*) begin
     end
 end
 
+
+//read concatination logic
 always @(*) begin
     if(sustained_read_enable) begin
         if(sustained_size == 2'd0) begin
