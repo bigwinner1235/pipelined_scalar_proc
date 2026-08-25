@@ -63,6 +63,7 @@ To evaluate the efficacy of the pipelining, I synthesized it in vivado using an 
 
 Excerpts from the vivado utilization report:
 
+```
 1. Slice Logic
 --------------
 
@@ -94,6 +95,7 @@ Excerpts from the vivado utilization report:
 |   RAMB18          |    4 |     0 |          0 |       270 |  1.48 |
 |     RAMB18E1 only |    4 |       |            |           |       |
 +-------------------+------+-------+------------+-----------+-------+
+```
 
 ## Authors
 
