@@ -28,6 +28,32 @@ module tb_top;
   // loaded here first and then striped across the banked memories
   reg [7:0] image [(1<<16)-1:0];
 
+  // retired-instruction counter for CPI reporting. The pipeline squashes
+  // bubbles by zeroing control signals while the instruction fields ride
+  // along stale, so wb_instruction alone can't say what actually retired.
+  // These shadow valid bits mirror the pipeline's own flush/freeze gating.
+  reg v_id, v_ex, v_mem;
+  integer retired, perf_cycles;
+  initial begin retired = 0; perf_cycles = 0; end
+  always @(posedge clk) begin
+    if (rst) begin
+      // startpc's instruction is already sitting in ID while reset is held
+      v_id <= 1'b1; v_ex <= 1'b0; v_mem <= 1'b0;
+    end else begin
+      if (!dut.freeze && !dut.halt) begin
+        v_id <= 1'b1;
+        v_ex <= (dut.flush || dut.flushed_in_if) ? 1'b0 : v_id;
+      end
+      if (!dut.halt) begin
+        v_mem <= dut.freeze ? 1'b0 : v_ex;
+        if (v_mem) retired = retired + 1; // instruction enters WB: retired
+        // perf_cycles starts at the first retirement, so CPI doesn't
+        // charge the program for the initial pipeline fill
+        if (retired > 0) perf_cycles = perf_cycles + 1;
+      end
+    end
+  end
+
   // data memory is banked: byte address a lives in bank a[2:0] at row a>>3
   function [7:0] read_byte(input [63:0] a);
     begin
@@ -112,6 +138,9 @@ module tb_top;
 
     $display("  program finished in %0d cycles (halt=%b illegal=%b)",
              cycles, dut.halt, dut.illegal);
+    if (retired > 0)
+      $display("  perf: cycles_after_fill=%0d retired=%0d cpi=%.3f",
+               perf_cycles, retired, perf_cycles * 1.0 / retired);
 
     errors = 0;
     $sformat(path, "%0s/expected.txt", testdir);
